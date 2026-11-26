@@ -1,6 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const savedKey = 'flowdesk-last-saved-run';
+const activeKey = 'flowdesk-active-session';
 let active = null;
 let savedId = localStorage.getItem(savedKey);
 let busy = false;
@@ -9,6 +10,15 @@ let autoStop = null;
 let autoPaused = false;
 let speaker;
 let source;
+let playback;
+let pendingRequest;
+let timings = {};
+let speechEndedAt;
+
+function trackTiming(key, started) {
+  timings[key] = Math.round(performance.now() - started);
+  $('timings').textContent = Object.entries(timings).map(([label, ms]) => label + ' ' + ms + ' ms').join(' · ');
+}
 
 function node(tag, text) {
   const element = document.createElement(tag);
@@ -21,11 +31,12 @@ function status(text, error = false) {
   $('status').dataset.error = String(error);
 }
 
-async function request(path, body) {
+async function request(path, body, options = {}) {
   const response = await fetch(path, {
     method: body ? 'POST' : 'GET',
     headers: body ? { 'Content-Type': 'application/json' } : {},
-    body: body && JSON.stringify(body), signal: AbortSignal.timeout(50000),
+    body: body && JSON.stringify(body),
+    signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(options.timeout || 50000)]) : AbortSignal.timeout(options.timeout || 50000),
   });
   if (response.ok && response.headers.get('content-type')?.includes('audio/')) return response.arrayBuffer();
   const data = await response.json().catch(() => ({}));
@@ -34,7 +45,8 @@ async function request(path, body) {
 }
 
 function controls() {
-  document.querySelectorAll('main button').forEach(button => { button.disabled = busy && !(button.id === 'mic' && recording); });
+  document.querySelectorAll('main button').forEach(button => { button.disabled = busy && !((button.id === 'mic' && recording) || button.id === 'switch-text' || button.id === 'interrupt'); });
+  $('interrupt').hidden = !playback;
   if (recording) {
     $('mic').textContent = $('autolisten')?.checked ? 'Stop listening' : 'Send voice turn';
   } else {
@@ -66,7 +78,7 @@ function renderSession() {
   if (!active) return;
   const { profile, qualification, turns, proposed, offers } = active;
   list($('profile'), {
-    'Name': profile.name, 'Use case': profile.need, 'Team size': profile.teamSize,
+    'Name': profile.name, 'Contact': active.hasContact ? 'Email added for handoff' : null, 'Use case': profile.need, 'Team size': profile.teamSize,
     'Timeline': profile.timelineDays == null ? null : profile.timelineDays + ' days',
     'Language': ({ en: 'English', hi: 'Hindi', kn: 'Kannada' }[active.language] || active.language),
     'Outcome': qualification.outcome, 'Reason': qualification.reason, 'Sentiment': active.sentiment.label,
@@ -111,7 +123,7 @@ async function refreshSaved() {
     const summary = node('dl');
     const r = record.result;
     list(summary, {
-      'Lead ID': record.id, 'Need': r.need, 'Team': r.teamSize, 'Timeline': r.timeline,
+      'Lead ID': record.id, 'Name': r.prospectName, 'Need': r.need, 'Team': r.teamSize, 'Timeline': r.timeline,
       'Language': r.language, 'Outcome': r.qualification, 'Reason': r.reason, 'Objection': r.objection,
       'Sentiment': r.sentiment, 'Sentiment reason': r.sentimentReason,
       'Booking': r.bookingOutcome, 'Reference': r.bookingReference, 'Next action': r.nextAction,
@@ -137,34 +149,64 @@ async function audioReady() {
 }
 
 async function speak(text) {
-  if (!$('speech').checked) return;
+  if (!$('speech').checked || autoPaused) return;
+  const controller = new AbortController();
+  playback = controller;
+  controls();
+  const started = performance.now();
+  let startedPlayback = false;
+  const firstAudio = () => {
+    startedPlayback = true;
+    trackTiming('TTS to playable audio', started);
+    if (speechEndedAt != null) trackTiming('End of recording to playable audio', speechEndedAt);
+  };
   try {
     await audioReady();
-    if (!speaker) return;
-    const bytes = await request('/api/tts', { text, model: 'mulberry', speaker: 'speaker_1' });
-    source?.stop();
-    const audioBuffer = await speaker.decodeAudioData(bytes);
-    await new Promise(resolve => {
-      const node = speaker.createBufferSource();
-      source = node;
-      node.buffer = audioBuffer;
-      node.connect(speaker.destination);
-      const done = () => { if (source === node) source = null; resolve(); };
-      node.onended = done;
-      node.playbackRate.value = 1.15;
-      setTimeout(done, Math.ceil(((audioBuffer.duration / 1.15) + 1) * 1000));
-      node.start();
-    });
+    try {
+      const settings = await request('/api/ws-connect', { text, model: 'mulberry' }, { signal: controller.signal, timeout: 4500 });
+      await playSalesStream(speaker, settings, text, controller.signal, firstAudio);
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      if (startedPlayback) throw error;
+      const bytes = await request('/api/tts', { text, model: 'mulberry', speaker: 'speaker_1' }, { signal: controller.signal, timeout: 12000 });
+      const buffer = await speaker.decodeAudioData(bytes);
+      if (controller.signal.aborted) return;
+      await new Promise(resolve => {
+        const player = speaker.createBufferSource();
+        source = player;
+        const stop = () => player.stop();
+        player.buffer = buffer;
+        player.connect(speaker.destination);
+        player.onended = () => {
+          controller.signal.removeEventListener('abort', stop);
+          player.disconnect();
+          if (source === player) source = null;
+          resolve();
+        };
+        player.start();
+        controller.signal.addEventListener('abort', stop, { once: true });
+        firstAudio();
+      });
+    }
   } catch (error) {
-    status('Speech playback failed. The written reply is above. ' + error.message, true);
+    if (!controller.signal.aborted) status('Speech playback failed. The written reply is above.', true);
+  } finally {
+    if (playback === controller) playback = null;
+    controls();
   }
 }
 
 async function act(input) {
   status(input.action === 'confirm' ? 'Saving the appointment and timeline…' : 'Working…');
+  const started = performance.now();
+  const key = JSON.stringify([active.id, input]);
+  if (pendingRequest?.key !== key) pendingRequest = { key, id: crypto.randomUUID() };
   try {
-    active = await request('/api/sales/action', { id: active.id, ...input });
+    active = await request('/api/sales/action', { id: active.id, requestId: pendingRequest.id, ...input });
+    pendingRequest = null;
+    trackTiming(input.action === 'turn' ? 'Agent reply' : 'Sales action', started);
   } catch (error) {
+    if (error.status && error.status < 500 && error.code !== 'busy') pendingRequest = null;
     if (error.code === 'slot_unavailable') {
       active.proposed = null;
       active.offers = [];
@@ -175,12 +217,15 @@ async function act(input) {
   if (active.saved) {
     savedId = active.id;
     localStorage.setItem(savedKey, savedId);
+    sessionStorage.removeItem(activeKey);
     renderSession();
-    await refreshSaved();
+    try { await refreshSaved(); }
+    catch (_) { status('Saved in LeadPulse. Use Refresh LeadPulse to reload the record.', true); return; }
   }
   renderSession();
   status(active.saved ? 'Saved in LeadPulse.' : 'Ready for your next turn.');
-  await speak(active.turns.at(-1).text);
+  if (input.action !== 'contact') await speak(active.turns.at(-1).text);
+  else status('Email added. It will be saved when you finish or book.');
 }
 
 function encode(blob) {
@@ -217,7 +262,7 @@ function monitorSilence(stream, onSpeechEnd, onNoSpeech) {
       silenceStart = 0;
     } else if (heardSpeech) {
       if (!silenceStart) silenceStart = Date.now();
-      else if (Date.now() - silenceStart >= 650) onSpeechEnd();
+      else if (Date.now() - silenceStart >= 900) onSpeechEnd();
     } else if (Date.now() - startedAt >= 15000) {
       onNoSpeech();
     }
@@ -235,7 +280,8 @@ function canAutoListen() {
 
 async function recordTurn() {
   if (recording) {
-    autoPaused = true;
+    if (recording.state !== 'recording') return;
+    if ($('autolisten').checked) autoPaused = true;
     autoStop?.();
     recording.stop();
     return;
@@ -251,17 +297,32 @@ async function recordTurn() {
     let timeout;
     let stopVad;
     let skipped = false;
+    let live;
+    const preview = $('voice-preview');
+    const voiceSessionId = active.id;
+    timings = {};
+    speechEndedAt = null;
     try {
       const type = 'audio/webm;codecs=opus';
       const recorder = new MediaRecorder(stream, MediaRecorder.isTypeSupported(type) ? { mimeType: type } : undefined);
       const chunks = [];
+      try {
+        live = openSalesTranscription(active.language, text => {
+          preview.textContent = text;
+          preview.hidden = !text;
+        });
+      } catch (_) {}
       const done = new Promise((resolve, reject) => {
-        recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
+        recorder.ondataavailable = event => {
+          if (!event.data.size) return;
+          chunks.push(event.data);
+          live?.push(event.data);
+        };
         recorder.onerror = () => reject(new Error('Microphone recording failed.'));
         recorder.onstop = () => resolve(new Blob(chunks, { type: recorder.mimeType || 'audio/webm' }));
       });
       recording = recorder;
-      recorder.start();
+      recorder.start(200);
       const autoMode = Boolean($('autolisten')?.checked);
       if (autoMode) {
         stopVad = monitorSilence(
@@ -275,6 +336,7 @@ async function recordTurn() {
       controls();
       status(autoMode ? 'Listening automatically… speak now.' : 'Listening. Click Send voice turn when you finish speaking.');
       const blob = await done;
+      speechEndedAt = performance.now();
       stopVad?.();
       autoStop = null;
       stream.getTracks().forEach(track => track.stop());
@@ -286,16 +348,32 @@ async function recordTurn() {
         throw new Error('The recording was too short. Try a full sentence.');
       }
       status('Transcribing with Deepgram…');
-      const result = await request('/api/stt', { audio: await encode(blob), mime: blob.type, language: active.language })
-        .catch(error => { throw new Error('Deepgram: ' + error.message + ' You can type this turn and continue.'); });
+      const streamed = await live?.finish();
+      if (autoPaused || active?.id !== voiceSessionId) return;
+      const result = streamed ? { text: streamed } : await request('/api/stt', { audio: await encode(blob), mime: blob.type, language: active.language }, { timeout: 15000 })
+        .catch(error => { throw new Error('Transcription failed. You can type this turn and continue.'); });
+      if (autoPaused || active?.id !== voiceSessionId) return;
+      trackTiming(streamed ? 'Streaming transcript' : 'Batch transcript', speechEndedAt);
       if (!result.text?.trim()) {
         if (canAutoListen()) { shouldContinue = true; return; }
         throw new Error('Deepgram heard no words. Check the mic or type this turn.');
       }
-      await act({ action: 'turn', text: result.text });
+      if ($('review-transcript').checked) {
+        $('text').value = result.text;
+        $('text').focus();
+        status('Review the transcript, then press Send.');
+        return;
+      }
+      try { await act({ action: 'turn', text: result.text }); }
+      catch (error) {
+        $('text').value = result.text;
+        throw error;
+      }
       shouldContinue = canAutoListen();
     } finally {
       clearTimeout(timeout);
+      live?.close();
+      preview.hidden = true;
       stopVad?.();
       autoStop = null;
       recording = null;
@@ -306,6 +384,38 @@ async function recordTurn() {
 }
 
 $('mic').addEventListener('click', recordTurn);
+$('switch-text').addEventListener('click', () => {
+  autoPaused = true;
+  $('autolisten').checked = false;
+  if (recording?.state === 'recording') recording.stop();
+  playback?.abort();
+  $('text').focus();
+  status('Type your next turn.');
+});
+$('interrupt').addEventListener('click', () => {
+  playback?.abort();
+  status('Reply interrupted.');
+});
+$('end').addEventListener('click', () => perform(async () => {
+  await request('/api/sales/action', { id: active.id, action: 'end' });
+  sessionStorage.removeItem(activeKey);
+  active = null;
+  pendingRequest = null;
+  $('transcript').replaceChildren();
+  $('profile').replaceChildren();
+  $('slots').replaceChildren(node('p', 'Ask to see available demo times.'));
+  $('text').value = '';
+  $('contact').reset();
+  renderSession();
+  status('Conversation ended. You can start a new one.');
+}));
+$('contact').addEventListener('submit', event => {
+  event.preventDefault();
+  perform(async () => {
+    await act({ action: 'contact', email: $('email').value, consent: $('contact-consent').checked });
+    $('contact').reset();
+  });
+});
 $('login').addEventListener('submit', event => {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
@@ -321,6 +431,7 @@ $('start').addEventListener('submit', event => {
   perform(async () => {
     await audioReady();
     active = await request('/api/sales/start', { language: $('language').value, consent: $('consent').checked });
+    sessionStorage.setItem(activeKey, active.id);
     renderSession();
     status('Ready. Speak a turn or type a message.');
     await speak(active.turns.at(-1).text);
@@ -332,6 +443,9 @@ $('typed').addEventListener('submit', event => {
   event.preventDefault();
   const value = $('text').value.trim();
   if (value) perform(async () => {
+    timings = {};
+    speechEndedAt = null;
+    autoPaused = false;
     await audioReady();
     await act({ action: 'turn', text: value });
     $('text').value = '';
@@ -339,13 +453,33 @@ $('typed').addEventListener('submit', event => {
 });
 $('finish').addEventListener('click', () => perform(() => act({ action: 'finish' })));
 $('refresh').addEventListener('click', () => perform(refreshSaved));
-window.addEventListener('pagehide', () => { if (recording?.state === 'recording') recording.stop(); });
+window.addEventListener('pagehide', () => {
+  autoPaused = true;
+  playback?.abort();
+  if (recording?.state === 'recording') recording.stop();
+});
 
 async function boot() {
   await request('/api/me');
   $('login').hidden = true;
   $('workspace').hidden = false;
   status('');
+  const resumeId = sessionStorage.getItem(activeKey);
+  if (resumeId) {
+    try {
+      active = await request('/api/sales/session?id=' + encodeURIComponent(resumeId));
+      if (active.saved) {
+        savedId = active.id;
+        localStorage.setItem(savedKey, savedId);
+        sessionStorage.removeItem(activeKey);
+      }
+      renderSession();
+      status(active.saved ? 'Saved in LeadPulse.' : 'Conversation resumed. Speak or type to continue.');
+    } catch (error) {
+      if (error.code === 'session_expired') sessionStorage.removeItem(activeKey);
+      else status(error.message, true);
+    }
+  }
   if (savedId) await refreshSaved().catch(error => status(error.message, true));
 }
 

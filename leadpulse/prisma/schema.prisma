@@ -378,15 +378,18 @@ model WorkflowJob {
 }
 
 model SalesSlot {
+  tenantId  String?
   id        String    @id
   startsAt  DateTime
   timeZone  String
   run       SalesRun?
 
+  @@index([tenantId, startsAt])
   @@map("sales_slots")
 }
 
 model SalesRun {
+  tenantId  String?
   id          String     @id @db.Uuid
   account     String
   result      Json
@@ -395,5 +398,6 @@ model SalesRun {
   createdAt   DateTime   @default(now())
 
   @@index([account, createdAt])
+  @@index([tenantId, createdAt])
   @@map("sales_runs")
 }

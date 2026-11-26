@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>FlowDesk Sales Assistant</title>
   <link rel="stylesheet" href="/assets/sales.css">
-  <script src="/assets/sales.js?v=prospect-name" defer></script>
+  <script src="/assets/sales-media.js?v=resilient-voice" defer></script>
+  <script src="/assets/sales.js?v=resilient-voice" defer></script>
 </head>
 <body>
   <header><strong>FlowDesk</strong><span>Sales assistant</span><a href="/architecture.html">Architecture</a></header>
@@ -31,12 +32,30 @@
         </form>
         <div id="transcript" role="log" aria-live="polite"></div>
         <div id="controls" hidden>
+          <p id="voice-preview" aria-live="off" hidden></p>
           <div class="row"><button id="mic" type="button">Speak a turn</button><label class="check"><input id="speech" type="checkbox" checked> Speak replies</label><label class="check"><input id="autolisten" type="checkbox" checked> Auto-listen</label></div>
+          <div class="row">
+            <button id="switch-text" class="quiet" type="button">Switch to typing</button>
+            <button id="interrupt" class="quiet" type="button" hidden>Interrupt reply</button>
+            <label class="check"><input id="review-transcript" type="checkbox"> Review voice transcript before sending</label>
+          </div>
           <form id="typed">
             <label for="text">Type a turn</label>
             <div class="row"><input id="text" placeholder="What does your voice agent do?" maxlength="600" required><button>Send</button></div>
           </form>
-          <button id="finish" class="quiet" type="button">Save without booking</button>
+          <div class="row">
+            <button id="finish" class="quiet" type="button">Save without booking</button>
+            <button id="end" class="quiet" type="button">End unsaved conversation</button>
+          </div>
+          <details>
+            <summary>Share contact email for follow-up</summary>
+            <form id="contact">
+              <label>Email <input id="email" type="email" maxlength="254" required></label>
+              <label class="check"><input id="contact-consent" type="checkbox" required> Share this email with the sales team when I save or book.</label>
+              <button class="quiet">Add contact email</button>
+            </form>
+          </details>
+          <details><summary>Turn timings</summary><p id="timings">Timing appears after a turn.</p></details>
         </div>
       </section>
       <aside>

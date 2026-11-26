@@ -1,6 +1,7 @@
 'use strict';
 const { randomUUID } = require('node:crypto');
 const faq = require('./faq.json');
+const { memoryStore } = require('./store');
 const idleMs = 30 * 60 * 1000;
 const maxTurns = 24;
 const supported = new Set(['en', 'hi', 'kn']);
@@ -24,6 +25,8 @@ const PHRASES = {
     askTimeline: 'When would you like to start? For example, tomorrow, next week, or in 30 days.',
     askDemo: 'Would you like to see available demo times?',
     confirmTime: 'Please confirm this exact time. ',
+    confirmHelp: 'Say “Confirm booking” or use the Confirm button.',
+    chooseBeforeConfirm: 'Please choose an available demo time first.',
     chooseTimes: 'Choose one of these times. ',
     noTimes: 'There are no demo times available right now.',
     noFaq: 'My FlowDesk FAQ does not cover that question. ',
@@ -43,6 +46,8 @@ const PHRASES = {
     askTimeline: 'आप कितने दिनों में शुरू करना चाहेंगे?',
     askDemo: 'क्या आप डेमो का समय देखना चाहेंगे?',
     confirmTime: 'कृपया इस समय की पुष्टि करें। ',
+    confirmHelp: '“बुकिंग की पुष्टि करें” कहें या पुष्टि बटन दबाएँ।',
+    chooseBeforeConfirm: 'पहले डेमो के लिए उपलब्ध समय चुनें।',
     chooseTimes: 'इनमें से एक समय चुनें। ',
     noTimes: 'अभी कोई समय उपलब्ध नहीं है।',
     noFaq: 'मेरे FlowDesk FAQ में इस सवाल का उत्तर नहीं है। ',
@@ -62,6 +67,8 @@ const PHRASES = {
     askTimeline: 'ನೀವು ಎಷ್ಟು ದಿನಗಳಲ್ಲಿ ಪ್ರಾರಂಭಿಸಲು ಬಯಸುತ್ತೀರಿ?',
     askDemo: 'ಲಭ್ಯವಿರುವ ಡೆಮೊ ಸಮಯಗಳನ್ನು ನೋಡಲು ಬಯಸುತ್ತೀರಾ?',
     confirmTime: 'ದಯವಿಟ್ಟು ಈ ನಿಖರ ಸಮಯವನ್ನು ದೃಢೀಕರಿಸಿ. ',
+    confirmHelp: '“ಬುಕಿಂಗ್ ದೃಢೀಕರಿಸಿ” ಎಂದು ಹೇಳಿ ಅಥವಾ ದೃಢೀಕರಣ ಬಟನ್ ಒತ್ತಿರಿ.',
+    chooseBeforeConfirm: 'ಮೊದಲು ಡೆಮೊಗೆ ಲಭ್ಯವಿರುವ ಸಮಯವನ್ನು ಆಯ್ಕೆಮಾಡಿ.',
     chooseTimes: 'ಈ ಸಮಯಗಳಲ್ಲಿ ಒಂದನ್ನು ಆಯ್ಕೆಮಾಡಿ. ',
     noTimes: 'ಪ್ರಸ್ತುತ ಯಾವುದೇ ಡೆಮೊ ಸಮಯಗಳು ಲಭ್ಯವಿಲ್ಲ.',
     noFaq: 'ನನ್ನ FlowDesk FAQ ನಲ್ಲಿ ಆ ಪ್ರಶ್ನೆಗೆ ಉತ್ತರವಿಲ್ಲ. ',
@@ -95,6 +102,10 @@ function parseAnswer(text, passages) {
   const sources = [...new Set(answer.sources)].map(id => passages.find(entry => entry.id === id));
   if (sources.some(entry => !entry) || !answer.answer.trim() || answer.answer.length > 650) return null;
   if (!sources.length) return { unsupported: true };
+  const prices = value => [...digits(value).matchAll(/(?:USD\s*|\$)(\d+(?:\.\d{1,2})?)|(\d+(?:\.\d{1,2})?)\s*(?:dollars?\b|डॉलर|ಡಾಲರ್)/giu)]
+    .map(match => Number(match[1] || match[2]));
+  const approvedPrices = new Set(sources.flatMap(entry => [entry.en, entry.hi, entry.kn].flatMap(prices)));
+  if (prices(answer.answer).some(price => !approvedPrices.has(price))) return null;
   return { text: answer.answer.trim(), sources };
 }
 
@@ -175,6 +186,10 @@ function splitIntroduction(text) {
   return name ? { name, remainder } : null;
 }
 
+function isBookingConfirmation(text) {
+  return /^(?:please )?(?:confirm (?:the |this |my )?(?:booking|appointment|selected slot)|बुकिंग की पुष्टि करें|ಬುಕಿಂಗ್ ದೃಢೀಕರಿಸಿ)[.!। ]*$/iu.test(text);
+}
+
 function slotLabel(slot, language) {
   return new Intl.DateTimeFormat(say(language).locale, {
     timeZone: slot.timeZone, dateStyle: 'full', timeStyle: 'short',
@@ -185,27 +200,26 @@ function problem(message, status = 400, code = 'invalid') {
   return Object.assign(new Error(message), { status, code });
 }
 
-function createSales({ crm, chat, now = Date.now }) {
-  const sessions = new Map();
-  const scope = ({ tenant, user }) => tenant.id + '_' + user.id;
-  function cleanExpired() {
-    for (const [id, session] of sessions) if (!session.busy && session.expiresAt <= now()) sessions.delete(id);
-  }
+function createSales({ crm, chat, now = Date.now, store = memoryStore(), observe = () => {} }) {
+  const scope = ({ tenant, user }) => tenant.id + ':' + user.id;
+  const crmAccount = ({ tenant, user }) => tenant.id + '_' + user.id;
   function publicState(session) {
     const { id, language, profile, proposed, offers, saved, turns, sentiment } = session;
-    return { id, language, profile, qualification: qualify(profile), sentiment, proposed, offers, saved, turns };
+    return { id, language, profile, qualification: qualify(profile), hasContact: Boolean(session.contactEmail), sentiment, proposed, offers, saved, turns };
   }
-  function start(ctx, { language, consent }) {
+  async function start(ctx, { language, consent }) {
     if (!supported.has(language) || consent !== true) throw problem('Choose a language and acknowledge the demo disclosure.');
-    cleanExpired();
-    const account = scope(ctx);
-    if ([...sessions.values()].filter(item => item.account === account && !item.saved).length >= 4) throw problem('Too many open demo sessions. Finish one or wait for expiration.', 429);
-    if (sessions.size >= 100) throw problem('Demo session capacity reached.', 503);
-    const session = { id: randomUUID(), account, language, profile: {}, awaitingName: true, nextNamedReply: 0, lastSources: [], turns: [], offers: [], proposed: null,
-      objection: '', sentiment: { label: 'Unclear', reason: 'No explicit reaction detected.' }, expiresAt: now() + idleMs, busy: false, saved: null };
-    reply(session, say(language).greet);
-    sessions.set(session.id, session);
-    return publicState(session);
+    return store.update(scope(ctx), now(), sessions => {
+      if (sessions.filter(item => !item.saved).length >= 4) throw problem('Too many open demo sessions. End one or wait for expiration.', 429);
+      while (sessions.length >= 12) sessions.splice(sessions.findIndex(item => item.saved), 1);
+      const session = { id: randomUUID(), account: crmAccount(ctx), tenantId: ctx.tenant.id, language,
+        profile: {}, awaitingName: true, nextNamedReply: 0, lastSources: [], turns: [], offers: [], proposed: null,
+        objection: '', sentiment: { label: 'Unclear', reason: 'No explicit reaction detected.' },
+        expiresAt: now() + idleMs, saved: null, requests: {} };
+      reply(session, say(language).greet);
+      sessions.push(session);
+      return publicState(session);
+    });
   }
 
   function reply(session, text, passages = [], warning) {
@@ -222,9 +236,10 @@ function createSales({ crm, chat, now = Date.now }) {
     const p = say(session.language);
     const contextual = has(text, /^(?:and |what about|how about|can it|does it|is it|how long|what if|और|उसमें|उसका|ಮತ್ತು|ಅದರ)/i);
     const prior = contextual ? session.lastSources : [];
-    const preferred = [...new Set([...ranked, ...prior])].slice(0, 3);
-    const catalog = [...new Set([...preferred, ...faq])];
+    const preferred = ranked.slice(0, 3);
+    const catalog = [...new Set([...preferred, ...prior, ...faq])];
     let answer;
+    const started = performance.now();
     let failed = false;
     try {
       const result = await chat({
@@ -247,6 +262,7 @@ function createSales({ crm, chat, now = Date.now }) {
     } catch (_) {
       failed = true;
     }
+    observe('llm', Math.round(performance.now() - started), answer?.text ? 'answered' : failed ? 'fallback' : 'unsupported');
     if (answer?.text) {
       session.lastSources = answer.sources;
       reply(session, answer.text, answer.sources);
@@ -298,15 +314,25 @@ function createSales({ crm, chat, now = Date.now }) {
       return;
     }
 
+    if (isBookingConfirmation(text)) {
+      if (!session.proposed) {
+        session.turns.push({ role: 'user', text: original });
+        reply(session, p.chooseBeforeConfirm);
+        return;
+      }
+      await finalize(session, session.proposed.id, original);
+      return;
+    }
+
     if (match && session.offers[Number(match[1]) - 1]) {
       const offer = session.offers[Number(match[1]) - 1];
       session.turns.push({ role: 'user', text: original });
       session.proposed = offer;
-      reply(session, p.confirmTime + offer.label);
+      reply(session, p.confirmTime + offer.label + '. ' + p.confirmHelp);
       return;
     }
     if (wantsSlots) {
-      const slots = await crm.slots();
+      const slots = await crm.slots(session.tenantId);
       session.turns.push({ role: 'user', text: original });
       session.proposed = null;
       session.offers = slots.map(slot => ({ ...slot, label: slotLabel(slot, session.language) }));
@@ -352,12 +378,14 @@ function createSales({ crm, chat, now = Date.now }) {
     reply(session, acknowledgment + memory + nextQuestion(session));
   }
 
-  async function finalize(session, slotId) {
+  async function finalize(session, slotId, confirmationText) {
     const slot = slotId ? session.proposed : null;
     if (slotId && slot?.id !== slotId) throw problem('Choose and confirm the currently proposed appointment.', 409, 'proposal_mismatch');
     if (session.turns.length < 2) throw problem('Send a prospect message before saving.');
     const { outcome, reason } = qualify(session.profile);
     const summary = {
+      prospectName: session.profile.name || null,
+      contactEmail: session.contactEmail || null,
       sentiment: session.sentiment.label, sentimentReason: session.sentiment.reason,
       need: session.profile.need || 'Not captured', teamSize: String(session.profile.teamSize || 'Unknown'),
       timeline: session.profile.timelineDays == null ? 'Unknown' : session.profile.timelineDays + ' days',
@@ -365,45 +393,77 @@ function createSales({ crm, chat, now = Date.now }) {
       bookingOutcome: slot ? 'Booked for ' + slotLabel(slot, 'en') : 'No appointment booked',
       nextAction: slot ? 'Attend discovery demo' : 'Sales review and follow-up',
     };
+    const started = performance.now();
     try {
-      session.saved = await crm.finalize({ id: session.id, account: session.account, summary, slotId: slot?.id || null });
+      session.saved = await crm.finalize({ id: session.id, account: session.account, tenantId: session.tenantId, summary, slotId: slot?.id || null });
     } catch (error) {
+      observe('crm_finalize', Math.round(performance.now() - started), error.code === 'slot_unavailable' ? 'conflict' : 'failed');
       if (error.code === 'slot_unavailable') { session.proposed = null; session.offers = []; }
       throw error;
     }
+    observe('crm_finalize', Math.round(performance.now() - started), 'ok');
+    if (confirmationText) session.turns.push({ role: 'user', text: confirmationText });
     reply(session, slot ? say(session.language).booked + slot.label : say(session.language).saved);
   }
 
+  function findSession(sessions, id) {
+    const session = sessions.find(item => item.id === id);
+    if (!session) throw problem('Session expired. Start a new conversation.', 404, 'session_expired');
+    return session;
+  }
+
   async function act(ctx, body) {
-    cleanExpired();
-    const session = sessions.get(body.id);
-    if (!session || session.account !== scope(ctx)) throw problem('Session expired. Start a new conversation.', 404, 'session_expired');
-    if (session.busy) throw problem('One request is already in progress. Wait briefly and retry.', 409, 'busy');
-    if (session.saved) {
-      if (body.action === 'confirm' && body.slotId === session.saved.slotId || body.action === 'finish' && !session.saved.slotId) return publicState(session);
-      throw problem('The conversation has already been saved.', 409);
-    }
-    session.busy = true;
-    session.expiresAt = now() + idleMs;
-    try {
-      if (body.action === 'turn') await turn(session, body.text);
+    return store.update(scope(ctx), now(), async sessions => {
+      const session = findSession(sessions, body.id);
+      if (body.action === 'end') {
+        sessions.splice(sessions.indexOf(session), 1);
+        return { ended: true };
+      }
+      const { requestId } = body;
+      if (requestId != null && (typeof requestId !== 'string' || !/^[a-z0-9-]{16,64}$/i.test(requestId))) throw problem('Invalid request ID.');
+      const fingerprint = JSON.stringify([body.action, body.text, body.slotId, body.email, body.consent]);
+      if (requestId && Object.hasOwn(session.requests, requestId)) {
+        if (session.requests[requestId] !== fingerprint) throw problem('Request ID already used for another turn.', 409);
+        return publicState(session);
+      }
+      if (session.saved) {
+        if (body.action === 'turn' && session.saved.slotId && isBookingConfirmation(String(body.text || '').trim())) return publicState(session);
+        if (body.action === 'confirm' && body.slotId === session.saved.slotId || body.action === 'finish' && !session.saved.slotId) return publicState(session);
+        throw problem('The conversation has already been saved.', 409);
+      }
+      session.expiresAt = now() + idleMs;
+      if (body.action === 'contact') {
+        const email = typeof body.email === 'string' ? body.email.trim() : '';
+        if (body.consent !== true || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          throw problem('Enter a valid email and agree to share it with the sales team.');
+        }
+        session.contactEmail = email;
+      } else if (body.action === 'turn') await turn(session, body.text);
       else if (body.action === 'propose') {
         const slot = session.offers.find(item => item.id === body.slotId);
         if (!slot) throw problem('Choose an offered time.');
         session.proposed = slot;
-        reply(session, say(session.language).confirmTime + slot.label);
+        const p = say(session.language);
+        reply(session, p.confirmTime + slot.label + '. ' + p.confirmHelp);
       } else if (body.action === 'confirm') {
         if (typeof body.slotId !== 'string' || !body.slotId) throw problem('Confirm a proposed date and time.');
         await finalize(session, body.slotId);
       } else if (body.action === 'finish') await finalize(session, null);
       else throw problem('Unknown sales action.');
+      if (requestId) {
+        session.requests[requestId] = fingerprint;
+        const ids = Object.keys(session.requests);
+        if (ids.length > 64) delete session.requests[ids[0]];
+      }
       return publicState(session);
-    } finally {
-      session.busy = false;
-    }
+    });
   }
 
-  return { start, act, read: (ctx, id) => crm.read(id, scope(ctx)) };
+  return {
+    start, act,
+    resume: (ctx, id) => store.update(scope(ctx), now(), sessions => publicState(findSession(sessions, id))),
+    read: (ctx, id) => crm.read(id, crmAccount(ctx), ctx.tenant.id),
+  };
 }
 
 module.exports = { createSales, qualify, retrieve };

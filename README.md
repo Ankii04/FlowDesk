@@ -25,22 +25,26 @@ node scripts/control.cjs login
 node scripts/control.cjs start
 ```
 
-Setup creates the ignored root `.env`, generates separate local demo and CRM credentials, and copies **only** Deepgram, Groq and Rumik keys from `%USERPROFILE%\rapidx-voice-agent-stack\.env` if available. It starts PostgreSQL and Redis, installs dependencies, applies both LeadPulse migrations, builds LeadPulse and seeds future slots. PostgreSQL and Redis are isolated from the older project's volumes. If provider keys were not copied, edit the root `.env` and restart. Keep Groq on `openai/gpt-oss-20b` unless your account requires a different model. Keep the PowerShell server window open.
+Setup creates the ignored root `.env`, generates separate local demo and CRM credentials, and copies **only** Deepgram, Groq and Rumik keys from `%USERPROFILE%\rapidx-voice-agent-stack\.env` if available. It starts PostgreSQL and Redis, installs dependencies, applies the LeadPulse migrations, builds LeadPulse and seeds future slots. PostgreSQL and Redis are isolated from the older project's volumes. If provider keys were not copied, edit the root `.env` and restart. Keep Groq on `openai/gpt-oss-20b` unless your account requires a different model. Keep the PowerShell server window open.
 
 | Service | Local endpoint | Purpose |
 |---|---|---|
 | RapidX | [FlowDesk demo](http://localhost:8787/sales.html) | Browser, session logic, FAQ retrieval, voice APIs |
 | LeadPulse | [Health](http://127.0.0.1:3100/health) | JWT-authenticated CRM and booking API |
 | PostgreSQL | 127.0.0.1:5434 | Leads, timeline, summaries, bookings and availability |
-| Redis | 127.0.0.1:6381 | Existing LeadPulse queue infrastructure |
+| Redis | 127.0.0.1:6381 | Short-lived FlowDesk conversation recovery and LeadPulse queue infrastructure |
 
 ### Demo
 
 1. Open **FlowDesk demo**, sign in with the local demo credentials printed by `node scripts/control.cjs login`, choose English, and acknowledge the disclosure.
-2. Uncheck **Speak replies** for a typed-only backup. With it checked, use **Speak a turn**, speak, then click **Send voice turn**. The assistant displays the transcript and reads its reply. Provider failures appear in the status message.
+2. Uncheck **Speak replies** for a typed-only backup. With it checked, use **Speak a turn**. With **Auto-listen** enabled, pause at the end of a turn to send it. With manual recording, click **Send voice turn**. **Review voice transcript before sending** lets you correct names and numbers. **Interrupt reply** stops playback, and **Switch to typing** stops recording and focuses the text field.
 3. Ask **“What does your voice agent do?”** and point out **FAQ-02**. Follow with **“Can it speak Hindi and save leads to our CRM?”** or **“What is the price?”**. The demo price is illustrative. Give a use case, **12 people**, and **30 days**. The assistant repeats those earlier details and shows the qualification reason.
-4. Say **“Show available demo slots”**, pick a time, and click the button that confirms the exact date, time and IST timezone. The UI shows the booking reference and LeadPulse timeline.
+4. Say **“Show available demo slots”**, say **“Slot 1”** or choose a time. After the agent reads back the exact time, say **“Confirm booking”** or click **Confirm**. An optional contact email can be saved with consent. The UI shows the booking reference and LeadPulse timeline.
 5. Reload the page and click **Refresh LeadPulse**. The record is fetched from LeadPulse using the saved reference.
+
+### Update an existing checkout
+
+Stop the running services with **Ctrl+C**. From the updated repository root, run `node scripts/control.cjs setup` again to install the Redis client and apply the tenant calendar migration, then run `node scripts/control.cjs start`. The launcher uses local Redis by default. Set `FLOWDESK_REDIS_URL` to override it or use `FLOWDESK_MEMORY_ONLY=1` with a blank Redis URL for an isolated demo. Memory-only mode loses open conversations when the Node process restarts.
 
 ### Reset and verification
 
@@ -54,10 +58,12 @@ node scripts/control.cjs start
 Reset clears only the dedicated Fortivex sales tables and tagged synthetic leads, then seeds future availability. The browser may remember a deleted reference. A new saved run replaces it. Use a separate terminal to run the HTTP workflow checks on a fresh set of synthetic slots. The check intentionally reserves one slot and saves another no-booking timeline.
 
 ```powershell
+node scripts/verify-sales-conversation.cjs
+node scripts/benchmark-sales.cjs 50
 node --env-file=.env scripts/verify.cjs
 ```
 
-Run `docker compose down` after evaluation to stop infrastructure while retaining data. The printable report and standalone architecture diagrams can be opened without running the app.
+The benchmark measures synthetic, in-process sales logic. Use the **Turn timings** panel for a voice rehearsal. Run `docker compose down` after evaluation to stop infrastructure while retaining data. The printable report and standalone architecture diagrams can be opened without running the app.
 
 ### Troubleshooting
 

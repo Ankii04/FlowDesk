@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Router, Request, Response, NextFunction } from 'express';
 import { Prisma, Role } from '@prisma/client';
 import { prisma } from '../../config/database';
@@ -21,9 +22,24 @@ router.use((req, res, next) => {
 const handle = (fn: (req: Request, res: Response) => Promise<unknown>) =>
   (req: Request, res: Response, next: NextFunction) => { fn(req, res).catch(next); };
 
-router.get('/slots', handle(async (_req, res) => {
+router.get('/slots', handle(async (req, res) => {
+  const tenantId = String(req.query.tenantId || '');
+  if (!identifier.test(tenantId)) return res.status(400).json({ message: 'Invalid workspace.' });
+  const templates = await prisma.salesSlot.findMany({
+    where: { tenantId: null, run: null, startsAt: { gt: new Date() } },
+    orderBy: { startsAt: 'asc' }, take: 6,
+  });
+  if (templates.length) {
+    await prisma.salesSlot.createMany({
+      data: templates.map(({ id, startsAt, timeZone }) => ({
+        id: 'tenant-' + createHash('sha256').update(tenantId + ':' + id).digest('hex'),
+        startsAt, timeZone, tenantId,
+      })),
+      skipDuplicates: true,
+    });
+  }
   const rows = await prisma.salesSlot.findMany({
-    where: { startsAt: { gt: new Date() }, run: null }, orderBy: [{ startsAt: 'asc' }, { id: 'asc' }], take: 6,
+    where: { tenantId, startsAt: { gt: new Date() }, run: null }, orderBy: [{ startsAt: 'asc' }, { id: 'asc' }], take: 6,
   });
   return sendSuccess(res, rows);
 }));
@@ -31,8 +47,9 @@ router.get('/slots', handle(async (_req, res) => {
 router.get('/runs/:id', handle(async (req, res) => {
   const { id } = req.params;
   const account = String(req.query.account || '');
-  if (!uuid.test(id) || !identifier.test(account)) return res.status(400).json({ message: 'Invalid sales run.' });
-  const run = await prisma.salesRun.findFirst({ where: { id, account }, include: { slot: true } });
+  const tenantId = String(req.query.tenantId || '');
+  if (!uuid.test(id) || !identifier.test(tenantId) || !identifier.test(account)) return res.status(400).json({ message: 'Invalid sales run.' });
+  const run = await prisma.salesRun.findFirst({ where: { id, account, OR: [{ tenantId }, { tenantId: null }] }, include: { slot: true } });
   if (!run) return res.status(404).json({ message: 'Sales run not found.' });
   const [timeline, conversation] = await Promise.all([
     conversationService.getTimeline(id),
@@ -42,17 +59,22 @@ router.get('/runs/:id', handle(async (req, res) => {
 }));
 
 router.post('/runs', handle(async (req, res) => {
-  const { id, account, summary, slotId = null } = req.body || {};
-  if (typeof id !== 'string' || !uuid.test(id) || typeof account !== 'string' || !identifier.test(account) ||
+  const { id, tenantId, account, summary, slotId = null } = req.body || {};
+  if (typeof id !== 'string' || !uuid.test(id) || typeof tenantId !== 'string' || !identifier.test(tenantId) || typeof account !== 'string' || !identifier.test(account) ||
       (slotId !== null && (typeof slotId !== 'string' || !identifier.test(slotId))) ||
       !summary || !summaryFields.every(key => typeof summary[key] === 'string' && summary[key].length <= 600) ||
       !['Qualified', 'Nurture', 'Needs review'].includes(summary.qualification)) {
     return res.status(400).json({ message: 'Invalid sales finalization.' });
   }
-  const cleanSummary = Object.fromEntries(summaryFields.map(key => [key, summary[key]]));
+  const { prospectName, contactEmail } = summary;
+  if ((prospectName != null && (typeof prospectName !== 'string' || prospectName.length < 2 || prospectName.length > 60)) ||
+      (contactEmail != null && (typeof contactEmail !== 'string' || contactEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)))) {
+    return res.status(400).json({ message: 'Invalid prospect contact details.' });
+  }
+  const cleanSummary = { ...Object.fromEntries(summaryFields.map(key => [key, summary[key]])), prospectName: prospectName || null };
   const existingRun = () => prisma.salesRun.findUnique({ where: { id }, include: { slot: true } });
   const replay = (existing: NonNullable<Awaited<ReturnType<typeof existingRun>>>) =>
-    existing.account === account && existing.slotId === slotId
+    existing.account === account && (existing.tenantId === tenantId || existing.tenantId === null) && existing.slotId === slotId
       ? sendSuccess(res, existing)
       : res.status(409).json({ code: 'session_conflict', message: 'This session already has a saved outcome.' });
 
@@ -62,14 +84,14 @@ router.post('/runs', handle(async (req, res) => {
   try {
     const run = await prisma.$transaction(async tx => {
       const slot = slotId === null ? null : await tx.salesSlot.findFirst({
-        where: { id: slotId, startsAt: { gt: new Date() }, run: null },
+        where: { id: slotId, tenantId, startsAt: { gt: new Date() }, run: null },
       });
       if (slotId !== null && !slot) throw new Error('slot_unavailable');
 
       const result = { ...cleanSummary, bookingReference: slot ? id : null };
-      const saved = await tx.salesRun.create({ data: { id, account, result, slotId }, include: { slot: true } });
+      const saved = await tx.salesRun.create({ data: { id, account, tenantId, result, slotId }, include: { slot: true } });
       await tx.lead.create({ data: {
-        id, customerName: 'Synthetic FlowDesk prospect', phone: '+12025550101', source: 'WEBSITE',
+        id, customerName: prospectName || 'Synthetic FlowDesk prospect', email: contactEmail || null, phone: '+12025550101', source: 'WEBSITE',
         status: summary.qualification === 'Qualified' ? 'INTERESTED' : 'FOLLOW_UP',
         tags: ['fortivex-round3'], customFields: { salesRunId: id, qualification: summary.qualification },
         assignedAgentId: req.user!.userId, nextFollowUpAt: slot?.startsAt, lastActivityAt: new Date(),

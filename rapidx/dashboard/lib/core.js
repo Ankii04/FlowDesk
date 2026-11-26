@@ -99,19 +99,24 @@ function readBody(req, cap = 64 * 1024) {
 }
 
 // Generic HTTPS POST. Resolves { status, headers, buffer }. Times out at 60s.
-function httpsPost(host, pathname, headers, bodyBuf) {
+function httpsPost(host, pathname, headers, bodyBuf, timeoutMs = 60000) {
   return new Promise((resolve, reject) => {
     const r = https.request({ host, path: pathname, method: 'POST', headers }, (resp) => {
       const parts = [];
       resp.on('data', (d) => parts.push(d));
-      resp.on('end', () => resolve({
-        status: resp.statusCode,
-        headers: resp.headers,
-        buffer: Buffer.concat(parts),
-      }));
+      resp.on('end', () => {
+        clearTimeout(deadline);
+        resolve({ status: resp.statusCode, headers: resp.headers, buffer: Buffer.concat(parts) });
+      });
+      resp.on('error', fail);
     });
-    r.on('error', reject);
-    r.setTimeout(60000, () => r.destroy(new Error('upstream timeout')));
+    const deadline = setTimeout(() => r.destroy(new Error('upstream timeout')), timeoutMs);
+    deadline.unref();
+    function fail(error) {
+      clearTimeout(deadline);
+      reject(error);
+    }
+    r.on('error', fail);
     if (bodyBuf) r.write(bodyBuf);
     r.end();
   });

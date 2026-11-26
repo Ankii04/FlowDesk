@@ -32,6 +32,17 @@ async function verify({ configureFault = async () => {}, assertFault = false } =
 
   const { id } = await start();
   ids.primary = id;
+  await turn(id, 'My name is Asha Rao');
+  await act(id, 'contact', { email: 'asha@example.test', consent: false }, 400);
+  const contact = await act(id, 'contact', { email: 'asha@example.test', consent: true });
+  assert.equal(contact.hasContact, true);
+  assert.ok(!JSON.stringify(contact).includes('asha@example.test'));
+  const requestId = randomUUID();
+  const first = await act(id, 'turn', { text: 'What is FlowDesk?', requestId });
+  const retried = await act(id, 'turn', { text: 'What is FlowDesk?', requestId });
+  assert.equal(retried.turns.length, first.turns.length);
+  await act(id, 'turn', { text: 'What is the price?', requestId }, 409);
+  assert.equal((await send('session?id=' + id)).profile.name, 'Asha Rao');
   const faq = await turn(id, 'What is the price?');
   assert.equal(faq.turns.at(-1).source.id, 'FAQ-01');
   if (process.env.TEST_EXPECT_PROVIDER_FALLBACK === '1') {
@@ -70,8 +81,8 @@ async function verify({ configureFault = async () => {}, assertFault = false } =
     await configureFault(false, id);
   }
 
-  const booked = await act(id, 'confirm', { slotId });
-  const again = await act(id, 'confirm', { slotId });
+  const booked = await turn(id, 'Confirm booking');
+  const again = await turn(id, 'Confirm booking');
   assert.equal(booked.saved.result.bookingReference, id);
   assert.deepEqual(again.saved, booked.saved);
   const conflict = await act(rival.id, 'confirm', { slotId }, 409);
@@ -95,9 +106,21 @@ async function verify({ configureFault = async () => {}, assertFault = false } =
   const lead = (await request(crm, '/leads/' + id, { headers })).data.data;
   const timeline = (await request(crm, '/conversations/' + id + '/timeline', { headers })).data.data;
   assert.equal(lead.customFields.salesRunId, id);
+  assert.equal(lead.customerName, 'Asha Rao');
+  assert.equal(lead.email, 'asha@example.test');
+  assert.equal(readBack.result.prospectName, 'Asha Rao');
+  assert.ok(!JSON.stringify(readBack).includes('asha@example.test'));
   assert.equal(lead.nextFollowUpAt, readBack.slot.startsAt);
   assert.equal(timeline.filter(item => item.type === 'CONVERSATION_ADDED').length, 1);
   assert.ok(!JSON.stringify(timeline).includes('passwordHash'));
+
+  const otherSlots = (await request(crm, '/sales-demo/slots?tenantId=other-tenant', { headers })).data.data;
+  assert.ok(otherSlots.length >= 2);
+  assert.ok(!otherSlots.some(slot => slot.id === slotId));
+  await request(crm, '/sales-demo/runs/' + id + '?account=' + encodeURIComponent(readBack.account) + '&tenantId=other-tenant', { headers, expected: 404 });
+  await request(crm, '/sales-demo/runs', { headers, expected: 409, body: {
+    id: randomUUID(), account: 'other-tenant_user', tenantId: 'other-tenant', summary: readBack.result, slotId: offered.offers[1].id,
+  } });
 
   const hi = await send('start', { language: 'hi', consent: true });
   await turn(hi.id, 'हमें नए लीड बाँटने हैं।');

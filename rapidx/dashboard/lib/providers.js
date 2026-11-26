@@ -132,7 +132,7 @@ const ttsRumik = {
       'Content-Type': 'application/json',
       'Content-Length': buf.length,
       'User-Agent': BROWSER_UA,
-    }, buf);
+    }, buf, opts.timeoutMs);
 
     if (up.status !== 200) {
       throw new ProviderError('rumik synthesis failed', up.status, 'upstream',
@@ -159,7 +159,7 @@ const ttsRumik = {
       'Content-Type': 'application/json',
       'Content-Length': buf.length,
       'User-Agent': BROWSER_UA,
-    }, buf);
+    }, buf, opts.timeoutMs);
     if (up.status !== 200) {
       throw new ProviderError('rumik mint failed', up.status, 'upstream',
         up.buffer.toString('utf8').slice(0, 300));
@@ -215,7 +215,7 @@ const sttDeepgram = {
       'Authorization': `Token ${key}`,
       'Content-Type': mime,
       'Content-Length': audio.length,
-    }, audio);
+    }, audio, opts.timeoutMs);
     let data = {}; try { data = JSON.parse(up.buffer.toString('utf8')); } catch {}
     if (up.status !== 200) {
       throw new ProviderError('deepgram transcription failed', up.status, 'upstream',
@@ -264,7 +264,7 @@ const llmGroq = {
       'Authorization': `Bearer ${key}`,
       'Content-Type': 'application/json',
       'Content-Length': payload.length,
-    }, payload);
+    }, payload, opts.timeoutMs);
     let data = {}; try { data = JSON.parse(up.buffer.toString('utf8')); } catch {}
     if (up.status !== 200) {
       throw new ProviderError('groq response failed', up.status, 'upstream',
@@ -322,7 +322,7 @@ const llmGemini = {
     let buf = Buffer.from(JSON.stringify(payload));
     let up = await httpsPost(GEMINI_HOST,
       `/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${key}`,
-      { 'Content-Type': 'application/json', 'Content-Length': buf.length }, buf);
+      { 'Content-Type': 'application/json', 'Content-Length': buf.length }, buf, opts.timeoutMs);
 
     let data; try { data = JSON.parse(up.buffer.toString('utf8')); } catch { data = {}; }
     // Some Gemini aliases reject thinkingConfig even though the same models
@@ -332,7 +332,7 @@ const llmGemini = {
       buf = Buffer.from(JSON.stringify(payload));
       up = await httpsPost(GEMINI_HOST,
         `/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${key}`,
-        { 'Content-Type': 'application/json', 'Content-Length': buf.length }, buf);
+        { 'Content-Type': 'application/json', 'Content-Length': buf.length }, buf, opts.timeoutMs);
       try { data = JSON.parse(up.buffer.toString('utf8')); } catch { data = {}; }
     }
     if (up.status !== 200) {

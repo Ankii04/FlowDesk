@@ -6,7 +6,7 @@ This table describes source found in the accessible checkouts, before runtime ve
 
 | Requirement | Existing files inspected | Reuse and Round 3 work |
 |---|---|---|
-| Browser voice and timeouts | `rapidx/dashboard/public/assets/app.js` · `rapidx/dashboard/server.js` · `rapidx/dashboard/lib/providers.js` | Reuse authenticated per-turn STT and TTS plus the MediaRecorder pattern. Keep both previous patches for the general console. Sales has its own focused page and defaults to the per-turn HTTP lane, so a streaming WebSocket outage cannot stop capture. |
+| Browser voice and timeouts | `rapidx/dashboard/public/assets/app.js` · `rapidx/dashboard/server.js` · `rapidx/dashboard/lib/providers.js` | Reuse authenticated per-turn STT and TTS plus the MediaRecorder pattern. Keep both previous patches for the general console. Sales has its own focused page and now uses streaming with per-turn HTTP fallback. |
 | Context, languages, FAQ | `rapidx/dashboard/lib/providers.js` | Add scoped short-lived sales state, English/Hindi choice, ranked product catalog, conversational sourced replies, and typed route through the same logic. |
 | CRM login and leads | `leadpulse/src/modules/auth/auth.routes.ts` · `leadpulse/src/middleware/auth.ts` · `leadpulse/src/modules/leads/lead.routes.ts` · `leadpulse/src/modules/leads/lead.service.ts` | Reuse JWT login and lead and conversation data models. Add an authenticated transaction endpoint rather than chaining multiple non-atomic writes. Verify the result with the existing lead read endpoint. |
 | Lead scoring | `leadpulse/src/modules/scoring/scoring.service.ts` | Its score measures engagement and response latency. Discovery fit uses explicit need, size and rollout data. Keep the fit outcome and reason separate so they don't alter LeadPulse's engagement score. |
@@ -35,7 +35,14 @@ This table describes source found in the accessible checkouts, before runtime ve
 
 Run `node scripts/verify-sales-conversation.cjs` for deterministic checks of the introduction, unpunctuated product questions, multiple topics, conversational follow-ups, the product boundary, Hindi and Kannada, provider failure, and explicit booking. An English live Groq check returned both CRM and Hindi support sources for a compound question, answered a phone-channel follow-up, and declined an unrelated sports question. The product overview still answered from the catalog when live generation fell back. Kannada product replies were checked with the catalog fallback. Browser microphone and playback for this update were not re-tested.
 
-## Runtime evidence
+## Production-hardening checks
+
+- `node scripts/verify-sales-conversation.cjs` covers mixed name and question turns, misheard product names, qualification, explicit voice booking, and replaying duplicate requests.
+- `node --env-file=.env scripts/verify.cjs` covers synthetic contact consent, name and email persistence in LeadPulse, legacy reads, two tenants with different slots, unauthorized cross-tenant reads and bookings, and the proposal-to-confirmation gate. These checks ran against real local PostgreSQL and Redis with the catalog fallback.
+- The RapidX test suite covers live stream finalization, batch fallback signals, and interrupted playback with simulated provider sockets. Chromium verified typed questions, transcript editing, microphone capture with a synthetic media device, streamed transcription with a simulated provider socket, and batch fallback. A local Redis instance restored the open session after the RapidX process restarted. Run the physical microphone check before demonstrating streamed audio.
+- `node scripts/benchmark-sales.cjs 50` exercises 300 turns in 50 concurrent synthetic sessions in-process. Match latency and load targets against live voice providers and a deployed stack separately.
+
+## Earlier Round 3 runtime evidence
 
 - Ran `npm ci`, Prisma Client generation, migrations on a fresh PostgreSQL database, LeadPulse build, and the demo seed. Ran `pnpm install --frozen-lockfile` and RapidX's existing `pnpm test`.
 - Ran `scripts/verify.cjs` against running RapidX, LeadPulse, PostgreSQL and Redis. PostgreSQL and Redis were native local processes for this test. The Windows Docker Compose launcher was not run in this environment.

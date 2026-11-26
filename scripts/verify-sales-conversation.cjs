@@ -33,7 +33,7 @@ async function main() {
     if (question.includes('cricket')) return { text: JSON.stringify({ answer: 'Out of scope.', sources: [] }) };
     return { text: 'invalid response' };
   });
-  const { id, turns } = liveFixture.start('en');
+  const { id, turns } = await liveFixture.start('en');
   assert.match(turns[0].text, /offer an AI voice agent/);
   assert.match(turns[0].text, /what name should i call you by/i);
   const about = await liveFixture.ask(id, 'What does your voice agent do');
@@ -61,13 +61,46 @@ async function main() {
   await liveFixture.act(id, { action: 'confirm', slotId: slot.id });
   assert.equal(effectCount, 1);
 
+  const voiceBooking = await liveFixture.start('en');
+  const noSlot = await liveFixture.ask(voiceBooking.id, 'Confirm booking');
+  assert.match(noSlot.turns.at(-1).text, /choose an available demo time/i);
+  assert.equal(effectCount, 1);
+  await liveFixture.ask(voiceBooking.id, 'Show available demo slots');
+  const pending = await liveFixture.ask(voiceBooking.id, 'Slot 1');
+  assert.match(pending.turns.at(-1).text, /Say “Confirm booking”/);
+  assert.equal((await liveFixture.ask(voiceBooking.id, 'Yes')).saved, null);
+  assert.equal(effectCount, 1);
+  const confirmed = await liveFixture.ask(voiceBooking.id, 'Please confirm booking.');
+  assert.equal(confirmed.saved.slotId, slot.id);
+  assert.match(confirmed.turns.at(-1).text, /Your demo is booked/);
+  await liveFixture.ask(voiceBooking.id, 'Confirm booking');
+  assert.equal(effectCount, 2);
+
+  const recoverable = await liveFixture.start('en');
+  const requestId = 'test-request-id-001';
+  const firstTurn = await liveFixture.act(recoverable.id, { action: 'turn', text: 'My name is Dev', requestId });
+  const retried = await liveFixture.act(recoverable.id, { action: 'turn', text: 'My name is Dev', requestId });
+  assert.equal(firstTurn.turns.length, retried.turns.length);
+  await assert.rejects(liveFixture.act(recoverable.id, { action: 'turn', text: 'Different content', requestId }), /already used/);
+  assert.deepEqual(await liveFixture.act(recoverable.id, { action: 'end' }), { ended: true });
+  await assert.rejects(liveFixture.ask(recoverable.id, 'Hello'), /expired/);
+
+  const inventedPrice = fixture(async () => ({ text: JSON.stringify({ answer: 'It costs $12 per team.', sources: ['FAQ-01'] }) }));
+  const priceCheck = await inventedPrice.start('en');
+  const grounded = await inventedPrice.ask(priceCheck.id, 'What is the price?');
+  assert.match(grounded.turns.at(-1).text, /\$49/);
+  assert.doesNotMatch(grounded.turns.at(-1).text, /\$12/);
+
   const offline = fixture(async () => { throw Error('fixture outage'); });
-  const offlineEnglish = offline.start('en');
+  const offlineEnglish = await offline.start('en');
   for (const [text, source] of [['How is your product?', 'FAQ-02'], ['How can I buy this product?', 'FAQ-10'], ['What are the advantages of your product?', 'FAQ-11']]) {
     const answer = await offline.ask(offlineEnglish.id, text);
     assert.equal(answer.turns.at(-1).source.id, source);
     assert.equal(answer.profile.need, undefined);
   }
+  const offTopicAfterPricing = await offline.ask(offlineEnglish.id, 'Does it work on Mars?');
+  assert.equal(offTopicAfterPricing.turns.at(-1).source, undefined);
+  assert.match(offTopicAfterPricing.turns.at(-1).text, /FAQ does not cover/);
   assert.equal((await offline.ask(offlineEnglish.id, 'Okay. So')).profile.need, undefined);
   await offline.ask(offlineEnglish.id, 'We need an agent to answer product inquiries.');
   await offline.ask(offlineEnglish.id, '15 people');
@@ -78,12 +111,12 @@ async function main() {
   const repeated = await offline.ask(offlineEnglish.id, 'Tomorrow');
   assert.equal(repeated.profile.timelineDays, 1);
   assert.doesNotMatch(repeated.turns.at(-1).text, /when would you like to start/i);
-  const relativeOnly = offline.start('en');
+  const relativeOnly = await offline.start('en');
   const today = await offline.ask(relativeOnly.id, 'Today');
   assert.equal(today.profile.timelineDays, 0);
   assert.equal(today.profile.need, undefined);
   assert.equal((await offline.ask(relativeOnly.id, 'Next week')).profile.timelineDays, 7);
-  const named = liveFixture.start('en');
+  const named = await liveFixture.start('en');
   const introduction = await liveFixture.ask(named.id, 'My name is Asha Rao.');
   assert.equal(introduction.profile.name, 'Asha Rao');
   assert.equal(introduction.profile.need, undefined);
@@ -95,14 +128,14 @@ async function main() {
   assert.equal(corrected.profile.name, 'Asha');
   assert.match((await liveFixture.ask(named.id, 'What is my name?')).turns.at(-1).text, /Asha/);
   const nameFixture = fixture(async () => { throw Error('fixture outage'); });
-  const bare = nameFixture.start('en');
+  const bare = await nameFixture.start('en');
   assert.equal((await nameFixture.ask(bare.id, 'Vikram')).profile.name, 'Vikram');
-  const skip = nameFixture.start('en');
+  const skip = await nameFixture.start('en');
   assert.equal((await nameFixture.ask(skip.id, 'Skip')).profile.name, undefined);
   const afterSkip = await nameFixture.ask(skip.id, 'How can I buy this product?');
   assert.equal(afterSkip.turns.at(-1).source.id, 'FAQ-10');
 
-  const spoken = nameFixture.start('en');
+  const spoken = await nameFixture.start('en');
   const screenshotText = 'Yeah. So my name is Ankit Kumar. And just tell me what are the products you are offering to.';
   const combined = await nameFixture.ask(spoken.id, screenshotText);
   assert.equal(combined.profile.name, 'Ankit Kumar');
@@ -122,7 +155,7 @@ async function main() {
   assert.equal(demo.turns.at(-1).source.id, 'FAQ-07');
   assert.equal(demo.offers.length, 0);
 
-  const hindi = offline.start('hi');
+  const hindi = await offline.start('hi');
   assert.match(hindi.turns[0].text, /वॉइस एजेंट/);
   const fallback = await offline.ask(hindi.id, 'आप क्या करते हैं?');
   assert.equal(fallback.turns.at(-1).source.id, 'FAQ-02');
@@ -132,7 +165,7 @@ async function main() {
   await offline.ask(hindi.id, '१२ लोग');
   const qualifiedHindi = await offline.ask(hindi.id, '३० दिन');
   assert.equal(qualifiedHindi.qualification.outcome, 'Qualified');
-  const kannada = offline.start('kn');
+  const kannada = await offline.start('kn');
   assert.match(kannada.turns[0].text, /ವಾಯ್ಸ್ ಏಜೆಂಟ್/);
   const kannadaOverview = await offline.ask(kannada.id, 'FlowDesk ಏನು ಮಾಡುತ್ತದೆ?');
   assert.equal(kannadaOverview.turns.at(-1).source.id, 'FAQ-02');

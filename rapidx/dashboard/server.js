@@ -24,19 +24,31 @@ core.loadEnv();
 const providers = require('./lib/providers');
 const { createSales } = require('./lib/sales/session');
 const { createCrm } = require('./lib/sales/crm');
-const sales = createSales({ crm: createCrm(process.env), chat: options => {
+const { redisStore } = require('./lib/sales/store');
+function observeVoice(stage, durationMs, outcome) {
+  if (process.env.FLOWDESK_TIMING_LOG === '1') console.log(JSON.stringify({
+    event: 'flowdesk.timing', stage, durationMs, outcome,
+  }));
+}
+
+const sales = createSales({
+  crm: createCrm(process.env),
+  store: process.env.FLOWDESK_REDIS_URL ? redisStore(process.env.FLOWDESK_REDIS_URL, 1900000) : undefined,
+  observe: observeVoice,
+  chat: options => {
   const selected = providers.resolveSelection('llm', {});
-  return selected.adapter.chat({ ...options, model: selected.model });
+  return selected.adapter.chat({ ...options, model: selected.model, timeoutMs: 6500 });
 } });
 
 async function apiSales(req, res, ctx) {
+  if (req.method !== 'GET' && rejectImpersonated(res, ctx)) return;
   try {
     const url = new URL(req.url, 'http://localhost');
     const body = ctx.body || {};
     const result = req.method === 'GET'
-      ? await sales.read(ctx, url.searchParams.get('id') || '')
+      ? await (url.pathname.endsWith('/session') ? sales.resume : sales.read)(ctx, url.searchParams.get('id') || '')
       : url.pathname.endsWith('/start')
-        ? sales.start(ctx, body)
+        ? await sales.start(ctx, body)
         : await sales.act(ctx, body);
     core.sendJson(res, 200, result);
   } catch (error) {
@@ -330,6 +342,9 @@ function rejectImpersonated(res, ctx) {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 async function apiSignup(req, res, body) {
+  if (process.env.FLOWDESK_INVITE_ONLY === '1') {
+    return core.sendJson(res, 403, { error: 'Public signup is disabled.', code: 'signup_disabled' });
+  }
   const email = String(body.email || '').trim().toLowerCase();
   const password = String(body.password || '');
   const name = String(body.name || '').trim().slice(0, 80) || 'Owner';
@@ -556,6 +571,7 @@ async function apiAgentsDelete(req, res, ctx) {
 // POST /api/tts -> Rumik WAV bytes. Increments tenant usage.chars.
 async function apiTts(req, res, ctx) {
   const b = ctx.body || {};
+  const started = performance.now();
   try {
     const selected = providers.resolveSelection('tts', { provider: b.provider, model: b.model });
     const out = await selected.adapter.synthesize({
@@ -564,9 +580,11 @@ async function apiTts(req, res, ctx) {
       speaker: b.speaker,
       f0_up_key: b.f0_up_key,
       description: b.description,
+      timeoutMs: 11000,
     });
     // Count usage only on a real synthesis.
     bumpUsage(ctx.tenant.id, 'chars', out.chars).catch(() => {});
+    observeVoice('tts_batch', Math.round(performance.now() - started), 'ok');
     core.send(res, 200, out.buffer, {
       'Content-Type': 'audio/wav',
       'Content-Length': out.buffer.length,
@@ -574,6 +592,7 @@ async function apiTts(req, res, ctx) {
       'X-Chars': String(out.chars),
     });
   } catch (e) {
+    observeVoice('tts_batch', Math.round(performance.now() - started), 'failed');
     handleProviderError(res, e);
   }
 }
@@ -581,11 +600,14 @@ async function apiTts(req, res, ctx) {
 // POST /api/ws-connect -> { ws_url, token } (Rumik streaming mint).
 async function apiWsConnect(req, res, ctx) {
   const b = ctx.body || {};
+  const started = performance.now();
   try {
     const selected = providers.resolveSelection('tts', { provider: b.provider, model: b.model });
-    const data = await selected.adapter.wsConnect({ text: b.text, model: selected.model });
+    const data = await selected.adapter.wsConnect({ text: b.text, model: selected.model, timeoutMs: 4200 });
+    observeVoice('tts_stream_ticket', Math.round(performance.now() - started), 'ok');
     core.sendJson(res, 200, { ...data, provider: selected.provider, model: selected.model });
   } catch (e) {
+    observeVoice('tts_stream_ticket', Math.round(performance.now() - started), 'failed');
     handleProviderError(res, e);
   }
 }
@@ -608,10 +630,13 @@ async function apiChat(req, res, ctx) {
 // POST /api/stt -> { text, provider, model, latency_ms } (Deepgram Nova-3).
 async function apiStt(req, res, ctx) {
   const b = ctx.body || {};
+  const started = performance.now();
   try {
-    const out = await providers.stt.transcribe({ audio: b.audio, mime: b.mime, language: b.language });
+    const out = await providers.stt.transcribe({ audio: b.audio, mime: b.mime, language: b.language, timeoutMs: 13500 });
+    observeVoice('stt_batch', Math.round(performance.now() - started), 'ok');
     core.sendJson(res, 200, out);
   } catch (e) {
+    observeVoice('stt_batch', Math.round(performance.now() - started), 'failed');
     handleProviderError(res, e);
   }
 }
@@ -1547,7 +1572,7 @@ const server = http.createServer(async (req, res) => {
 
       // ---- Authed GET routes ----
       if (req.method === 'GET') {
-        if (route === '/api/sales/saved') return core.requireAuth(req, res, apiSales);
+        if (route === '/api/sales/saved' || route === '/api/sales/session') return core.requireAuth(req, res, apiSales);
         if (route === '/api/me') return core.requireAuth(req, res, apiMe);
         if (route === '/api/agents') return core.requireAuth(req, res, apiAgentsList);
         if (route === '/api/usage') return core.requireAuth(req, res, apiUsage);
@@ -1692,16 +1717,17 @@ server.on('upgrade', async (req, socket, head) => {
   }
 });
 
-sttWss.on('connection', (client) => {
+sttWss.on('connection', (client, req) => {
   const key = process.env.DEEPGRAM_API_KEY;
   if (!key) {
     client.send(JSON.stringify({ type: 'ProxyError', message: 'Deepgram is not configured.' }));
     return client.close(1011, 'Deepgram unavailable');
   }
 
+  const requestedLanguage = new URL(req.url, 'http://localhost').searchParams.get('language');
   const query = new URLSearchParams({
     model: providers.stt.model,
-    language: 'multi',
+    language: ['en', 'hi', 'kn'].includes(requestedLanguage) ? requestedLanguage : 'multi',
     smart_format: 'true',
     punctuate: 'true',
     interim_results: 'true',
@@ -1712,7 +1738,10 @@ sttWss.on('connection', (client) => {
   const upstream = new WebSocket(`wss://api.deepgram.com/v1/listen?${query}`, {
     headers: { Authorization: `Token ${key}` },
     maxPayload: 1024 * 1024,
+    handshakeTimeout: 3500,
   });
+  const started = performance.now();
+  let receivedBytes = 0;
   let upstreamReady = false;
   let closed = false;
 
@@ -1720,16 +1749,19 @@ sttWss.on('connection', (client) => {
     if (closed) return;
     closed = true;
     clearInterval(keepAlive);
+    clearTimeout(lifetime);
     if (client.readyState === WebSocket.OPEN) client.close();
     if (upstream.readyState === WebSocket.OPEN || upstream.readyState === WebSocket.CONNECTING) upstream.close();
   };
 
+  const lifetime = setTimeout(closeBoth, 35000);
   const keepAlive = setInterval(() => {
     if (upstream.readyState === WebSocket.OPEN) upstream.send(JSON.stringify({ type: 'KeepAlive' }));
   }, 4000);
 
   upstream.on('open', () => {
     upstreamReady = true;
+    observeVoice('stt_stream_connect', Math.round(performance.now() - started), 'ok');
     if (client.readyState === WebSocket.OPEN) {
       client.send(JSON.stringify({ type: 'ProxyReady', provider: 'deepgram', model: providers.stt.model }));
     }
@@ -1738,6 +1770,7 @@ sttWss.on('connection', (client) => {
     if (client.readyState === WebSocket.OPEN) client.send(data, { binary: isBinary });
   });
   upstream.on('error', () => {
+    observeVoice('stt_stream_connect', Math.round(performance.now() - started), 'failed');
     if (client.readyState === WebSocket.OPEN) {
       client.send(JSON.stringify({ type: 'ProxyError', message: 'Deepgram live stream failed.' }));
     }
@@ -1747,8 +1780,16 @@ sttWss.on('connection', (client) => {
 
   client.on('message', (data, isBinary) => {
     if (!upstreamReady || upstream.readyState !== WebSocket.OPEN) return;
-    if (isBinary) upstream.send(data, { binary: true });
-    else upstream.send(data.toString());
+    if (isBinary) {
+      receivedBytes += data.length;
+      if (receivedBytes > 4 * 1024 * 1024 || upstream.bufferedAmount > 1024 * 1024) return closeBoth();
+      upstream.send(data, { binary: true });
+      return;
+    }
+    try {
+      const { type } = JSON.parse(data.toString());
+      if (['Finalize', 'KeepAlive', 'CloseStream'].includes(type)) upstream.send(JSON.stringify({ type }));
+    } catch (_) {}
   });
   client.on('error', () => closeBoth());
   client.on('close', () => closeBoth());

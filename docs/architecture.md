@@ -16,7 +16,7 @@ flowchart TB
   C["LeadPulse JWT routes"]
   P["PostgreSQL bookings, leads and timeline"]
   B -->|"Audio or typed turn"| R
-  R -->|"Audio clip"| D
+  R -->|"Audio stream or clip"| D
   D -->|"Transcript"| R
   R --> S
   S --> F
@@ -24,13 +24,13 @@ flowchart TB
   G -->|"Grounded reply"| S
   S -->|"Reply"| R
   R -->|"Reply text"| T
-  T -->|"WAV"| B
+  T -->|"Streamed PCM or WAV"| B
   S -->|"Availability, confirm or read"| C
   C -->|"Atomic write and read"| P
   C -->|"Saved result"| S
 ```
 
-RapidX holds sessions in one process for 30 minutes of inactivity and caps them at 24 conversational turns and four unsaved sessions per signed-in account. Refresh reads the last saved database record. Unsaved state is not restored across service restart. LeadPulse uses Prisma and a single PostgreSQL transaction. `SalesRun.id` is the idempotency key. `SalesRun.slotId` is unique. RapidX sends the original session ID on retry. The setup also runs Redis for existing LeadPulse modules. The demo's booking write is synchronous and does not use the queue.
+FlowDesk uses Redis by default for sales sessions, with a memory-only local option. Sessions expire after 30 minutes of inactivity, with a cap of 24 conversational turns and four unsaved sessions per signed-in account. Refresh reopens an active session while Redis and the browser login remain available. The last saved CRM record is read through LeadPulse. LeadPulse uses Prisma and a single PostgreSQL transaction. `SalesRun.id` is the idempotency key. `SalesRun.slotId` is unique. RapidX sends the original session ID on retry. Redis also supports existing LeadPulse modules. The demo's booking write is synchronous and does not use the queue.
 
 ## Proposed production deployment
 

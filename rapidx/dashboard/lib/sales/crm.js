@@ -42,9 +42,9 @@ function createCrm(env) {
     throw failure('LeadPulse authentication expired. Retry the request.');
   }
   return {
-    slots: () => call('/slots'),
+    slots: tenantId => call('/slots?tenantId=' + encodeURIComponent(tenantId)),
     finalize: payload => call('/runs', payload),
-    read: (id, account) => call('/runs/' + encodeURIComponent(id) + '?account=' + encodeURIComponent(account)),
+    read: (id, account, tenantId) => call('/runs/' + encodeURIComponent(id) + '?' + new URLSearchParams({ account, tenantId })),
   };
 }
 module.exports = { createCrm };

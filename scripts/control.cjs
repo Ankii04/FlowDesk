@@ -72,6 +72,9 @@ async function start() {
     });
   }
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => children.forEach(child => child.kill()));
+  if (!process.env.FLOWDESK_REDIS_URL && process.env.FLOWDESK_MEMORY_ONLY !== '1') {
+    process.env.FLOWDESK_REDIS_URL = 'redis://127.0.0.1:6381';
+  }
   launch('3100', 'dist/src/server.js', crm);
   launch('8787', 'server.js', rapidx);
   console.log('Open http://localhost:8787/sales.html once both servers are listening.');
