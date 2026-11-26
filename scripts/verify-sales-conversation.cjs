@@ -61,6 +61,27 @@ async function main() {
   assert.equal(effectCount, 1);
 
   const offline = fixture(async () => { throw Error('fixture outage'); });
+  const offlineEnglish = offline.start('en');
+  for (const [text, source] of [['How is your product?', 'FAQ-02'], ['How can I buy this product?', 'FAQ-10'], ['What are the advantages of your product?', 'FAQ-11']]) {
+    const answer = await offline.ask(offlineEnglish.id, text);
+    assert.equal(answer.turns.at(-1).source.id, source);
+    assert.equal(answer.profile.need, undefined);
+  }
+  assert.equal((await offline.ask(offlineEnglish.id, 'Okay. So')).profile.need, undefined);
+  await offline.ask(offlineEnglish.id, 'We need an agent to answer product inquiries.');
+  await offline.ask(offlineEnglish.id, '15 people');
+  const tomorrow = await offline.ask(offlineEnglish.id, 'Start from tomorrow');
+  assert.equal(tomorrow.profile.timelineDays, 1);
+  assert.equal(tomorrow.qualification.outcome, 'Qualified');
+  assert.match(tomorrow.turns.at(-1).text, /available demo times/);
+  const repeated = await offline.ask(offlineEnglish.id, 'Tomorrow');
+  assert.equal(repeated.profile.timelineDays, 1);
+  assert.doesNotMatch(repeated.turns.at(-1).text, /when would you like to start/i);
+  const relativeOnly = offline.start('en');
+  const today = await offline.ask(relativeOnly.id, 'Today');
+  assert.equal(today.profile.timelineDays, 0);
+  assert.equal(today.profile.need, undefined);
+  assert.equal((await offline.ask(relativeOnly.id, 'Next week')).profile.timelineDays, 7);
   const hindi = offline.start('hi');
   assert.match(hindi.turns[0].text, /वॉइस एजेंट/);
   const fallback = await offline.ask(hindi.id, 'आप क्या करते हैं?');
@@ -76,6 +97,6 @@ async function main() {
   const kannadaOverview = await offline.ask(kannada.id, 'FlowDesk ಏನು ಮಾಡುತ್ತದೆ?');
   assert.equal(kannadaOverview.turns.at(-1).source.id, 'FAQ-02');
   assert.match(kannadaOverview.turns.at(-1).text, /ರಿಸೆಪ್ಷನಿಸ್ಟ್/);
-  console.log('PASS: introduction, natural question without punctuation, multiple topics, follow-up context, sales scope, Hindi and Kannada, outage and explicit booking.');
+  console.log('PASS: introduction, natural question without punctuation, multiple topics, follow-up context, sales scope, Hindi and Kannada, outage, relative timelines, purchase and benefits, and explicit booking.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

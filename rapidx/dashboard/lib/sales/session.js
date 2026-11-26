@@ -15,10 +15,11 @@ const PHRASES = {
     langName: 'English',
     locale: 'en-IN',
     greet: 'Hi, I’m the FlowDesk sales assistant. We offer an AI voice agent that answers sales inquiries and helps book demos. What would you like to know about it?',
+    timelineSaved: days => days === 0 ? 'Got it, you want to start today.' : days === 1 ? 'Got it, you want to start tomorrow.' : `Got it, you want to start in about ${days} days.`,
     askAbout: 'I can help with the voice agent’s features, pricing, or a product demo.',
     askNeed: 'What would you use FlowDesk for?',
     askTeam: 'How many people are on your team? Please give a number.',
-    askTimeline: 'How many days until you want to start?',
+    askTimeline: 'When would you like to start? For example, tomorrow, next week, or in 30 days.',
     askDemo: 'Would you like to see available demo times?',
     confirmTime: 'Please confirm this exact time. ',
     chooseTimes: 'Choose one of these times. ',
@@ -31,6 +32,7 @@ const PHRASES = {
     langName: 'Hindi',
     locale: 'hi-IN',
     greet: 'नमस्ते, मैं FlowDesk का एआई सेल्स सहायक हूँ। हम व्यवसायों के लिए एआई वॉइस एजेंट पेश करते हैं। आप क्या जानना चाहेंगे?',
+    timelineSaved: days => days === 0 ? 'समझ गया, आप आज शुरू करना चाहते हैं।' : `समझ गया, आप ${days} दिन में शुरू करना चाहते हैं।`,
     askAbout: 'मैं वॉइस एजेंट की सुविधाएँ, कीमत और डेमो के बारे में बता सकता हूँ।',
     askNeed: 'आप किस काम के लिए FlowDesk इस्तेमाल करना चाहते हैं?',
     askTeam: 'आपकी टीम में कितने लोग हैं? संख्या बताइए।',
@@ -47,6 +49,7 @@ const PHRASES = {
     langName: 'Kannada',
     locale: 'kn-IN',
     greet: 'ನಮಸ್ಕಾರ, ನಾನು FlowDesk ಸೇಲ್ಸ್ ಸಹಾಯಕ. ನಮ್ಮ AI ವಾಯ್ಸ್ ಏಜೆಂಟ್ ಗ್ರಾಹಕರ ಪ್ರಶ್ನೆಗಳಿಗೆ ಉತ್ತರಿಸಿ ಡೆಮೊ ಬುಕ್ ಮಾಡಲು ಸಹಾಯ ಮಾಡುತ್ತದೆ. ಇನ್ನೇನು ತಿಳಿಯಲು ಬಯಸುತ್ತೀರಿ?',
+    timelineSaved: days => days === 0 ? 'ಅರ್ಥವಾಯಿತು, ನೀವು ಇಂದೇ ಪ್ರಾರಂಭಿಸಲು ಬಯಸುತ್ತೀರಿ.' : `ಅರ್ಥವಾಯಿತು, ನೀವು ${days} ದಿನಗಳಲ್ಲಿ ಪ್ರಾರಂಭಿಸಲು ಬಯಸುತ್ತೀರಿ.`,
     askAbout: 'ವಾಯ್ಸ್ ಏಜೆಂಟ್‌ನ ವೈಶಿಷ್ಟ್ಯಗಳು, ಬೆಲೆ ಅಥವಾ ಡೆಮೊ ಬಗ್ಗೆ ನಾನು ಸಹಾಯ ಮಾಡಬಹುದು.',
     askNeed: 'ನೀವು ಯಾವ ಕೆಲಸಕ್ಕಾಗಿ FlowDesk ಬಳಸಲು ಬಯಸುತ್ತೀರಿ?',
     askTeam: 'ನಿಮ್ಮ ತಂಡದಲ್ಲಿ ಎಷ್ಟು ಜನರಿದ್ದಾರೆ? ದಯವಿಟ್ಟು ಸಂಖ್ಯೆಯನ್ನು ಹೇಳಿ.',
@@ -110,16 +113,31 @@ function nextQuestion(session) {
   return p.askDemo;
 }
 
+function relativeTimeline(text) {
+  const phrase = tokens(text).join(' ');
+  if (!phrase) return null;
+  const time = phrase.replace(/^(?:(?:we|i) (?:want|would like|plan) to )?(?:start|launch|deploy|go live|roll out)(?: from| by| on)? /i, '');
+  if (/^(?:today|right away|immediately|asap|आज|ಇಂದು|ಇವತ್ತು)$/i.test(time)) return 0;
+  if (/^(?:tomorrow|by tomorrow|tomorrow morning|tomorrow afternoon|tomorrow evening|कल|ನಾಳೆ)$/i.test(time)) return 1;
+  if (/^(?:the day after tomorrow|day after tomorrow|परसों|ನಾಡಿದ್ದು)$/i.test(time)) return 2;
+  if (/^(?:next week|in a week|अगले हफ्ते|अगले सप्ताह|ಮುಂದಿನ ವಾರ)$/i.test(time)) return 7;
+  if (/^(?:next month|in a month|अगले महीने|ಮುಂದಿನ ತಿಂಗಳು)$/i.test(time)) return 30;
+  return null;
+}
+
 function captureProfile(session, text) {
   const input = digits(text);
   const size = input.match(/\b(\d{1,4})\s*(?:people|employees|users|seats|agents|members)\b|(?:team of\s+)(\d{1,4})|(?:^|\s)(\d{1,4})\s*(?:लोग|सदस्य|एजेंट|ಜನ|ಜನರು|ಸದಸ್ಯರು)/i);
   const when = input.match(/\b(\d{1,4})\s*(days?|weeks?|months?)\b|(?:^|\s)(\d{1,4})\s*(दिन|हफ्ते|सप्ताह|महीने|ದಿನ|ದಿನಗಳು|ವಾರ|ವಾರಗಳು|ತಿಂಗಳು)/i);
   const onlyNumber = /^\d{1,4}[.!।]?$/.test(input.trim()) ? parseInt(input, 10) : null;
-  if (!session.profile.need && text.length >= 5 && !size && !when && onlyNumber === null) session.profile.need = text.slice(0, 240);
+  const relative = relativeTimeline(input);
+  const useCase = has(input, /^(?:(?:our (?:goal|use case) is|we (?:need|want|would like|plan|hope) to|i (?:need|want|would like) to|(?:we|i) need (?:an? agent to|help with)|answer|handle|qualify|route|automate|book|capture|respond to)\s+\S|(?:हमें|हमारी ज़रूरत|मैं चाहता|ನಮಗೆ|ನಮ್ಮ ಅಗತ್ಯ)\s+\S)/i);
+  if (!session.profile.need && useCase && relative == null) session.profile.need = text.slice(0, 240);
   if (size) session.profile.teamSize = Number(size[1] || size[2] || size[3]) || null;
   else if (session.profile.need && !session.profile.teamSize && onlyNumber) session.profile.teamSize = onlyNumber;
   else if (session.profile.teamSize && session.profile.timelineDays == null && onlyNumber != null) session.profile.timelineDays = onlyNumber;
-  if (when) {
+  if (relative != null) session.profile.timelineDays = relative;
+  else if (when) {
     const unit = when[2] || when[4];
     session.profile.timelineDays = Number(when[1] || when[3]) * (/week|हफ्ते|सप्ताह|ವಾರ/i.test(unit) ? 7 : /month|महीने|ತಿಂಗಳು/i.test(unit) ? 30 : 1);
   }
@@ -182,6 +200,7 @@ function createSales({ crm, chat, now = Date.now }) {
         messages: [{ role: 'user', text: JSON.stringify({
           question: text,
           context: session.turns.slice(-4, -1).map(({ role, text: message }) => ({ role, text: message.slice(0, 180) })),
+        }) }, { role: 'user', text: JSON.stringify({
           catalog: catalog.map(entry => ({ id: entry.id, facts: entry[session.language] })),
         }) }],
       });
@@ -237,15 +256,17 @@ function createSales({ crm, chat, now = Date.now }) {
     else if (cautious) session.sentiment = { label: 'Cautious', reason: 'The prospect explicitly stated a concern.' };
     else if (positive) session.sentiment = { label: 'Positive', reason: 'The prospect explicitly expressed interest.' };
     const social = has(text.trim(), /^(?:hi|hello|hey|thank you|thanks|नमस्ते|धन्यवाद|ನಮಸ್ಕಾರ|ಧನ್ಯವಾದ)[.!। ]*$/i);
-    if (social) {
+    const filler = /^(?:(?:okay|ok|so|um|uh|hmm|alright|right) ?)+$/i.test(tokens(text).join(' '));
+    if (social || filler) {
       reply(session, p.askAbout);
       return;
     }
-    if (question || cautious || (ranked.length && !has(text, /^(?:(?:we|my|our|i need|i have)\b|(?:हमें|हमारी|हमारे|मेरी|मेरे|हम|ನಮಗೆ|ನಮ್ಮ|ನನಗೆ)\s)/i))) {
+    if (question || cautious || (relativeTimeline(text) == null && ranked.length && !has(text, /^(?:(?:we|my|our|i need|i have)\b|(?:हमें|हमारी|हमारे|मेरी|मेरे|हम|ನಮಗೆ|ನಮ್ಮ|ನನಗೆ)\s)/i))) {
       await answerInquiry(session, text, ranked);
       return;
     }
     const before = qualify(session.profile).outcome;
+    const priorTimeline = session.profile.timelineDays;
     if (!cautious && !positive) captureProfile(session, text);
     const result = qualify(session.profile);
     const memoryText = session.language === 'hi'
@@ -254,7 +275,9 @@ function createSales({ crm, chat, now = Date.now }) {
         ? `ನೀವು ${session.profile.teamSize} ಜನರ ತಂಡ ಮತ್ತು ${session.profile.timelineDays} ದಿನಗಳನ್ನು ತಿಳಿಸಿದ್ದೀರಿ. `
         : `I have your use case as “${session.profile.need},” with ${session.profile.teamSize} people and a ${session.profile.timelineDays}-day rollout. `;
     const memory = before === 'Needs review' && result.outcome !== 'Needs review' ? memoryText : '';
-    reply(session, memory + nextQuestion(session));
+    const capturedTimeline = session.profile.timelineDays != null && session.profile.timelineDays !== priorTimeline;
+    const acknowledgment = !memory && capturedTimeline ? p.timelineSaved(session.profile.timelineDays) + ' ' : '';
+    reply(session, acknowledgment + memory + nextQuestion(session));
   }
 
   async function finalize(session, slotId) {
