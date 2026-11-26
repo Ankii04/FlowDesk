@@ -102,6 +102,26 @@ async function main() {
   const afterSkip = await nameFixture.ask(skip.id, 'How can I buy this product?');
   assert.equal(afterSkip.turns.at(-1).source.id, 'FAQ-10');
 
+  const spoken = nameFixture.start('en');
+  const screenshotText = 'Yeah. So my name is Ankit Kumar. And just tell me what are the products you are offering to.';
+  const combined = await nameFixture.ask(spoken.id, screenshotText);
+  assert.equal(combined.profile.name, 'Ankit Kumar');
+  assert.equal(combined.profile.need, undefined);
+  assert.equal(combined.turns.at(-2).text, screenshotText);
+  assert.equal(combined.turns.at(-1).source.id, 'FAQ-02');
+  assert.match(combined.turns.at(-1).text, /^Ankit Kumar, .*AI receptionist/);
+  const misheard = await nameFixture.ask(spoken.id, 'What is Flutus? First, explain with that. What is Flutus?');
+  assert.equal(misheard.turns.at(-1).source.id, 'FAQ-02');
+  assert.match(misheard.turns.at(-1).text, /If you mean FlowDesk/);
+  const allInOne = await nameFixture.ask(spoken.id,
+    'Call me Ankit and what is this product, what is its price, and what are the teams?');
+  assert.equal(allInOne.profile.name, 'Ankit');
+  assert.deepEqual(new Set(allInOne.turns.at(-1).sources.map(source => source.id)), new Set(['FAQ-01', 'FAQ-02', 'FAQ-09']));
+  assert.match(allInOne.turns.at(-1).text, /\$49/);
+  const demo = await nameFixture.ask(spoken.id, 'What is my demo?');
+  assert.equal(demo.turns.at(-1).source.id, 'FAQ-07');
+  assert.equal(demo.offers.length, 0);
+
   const hindi = offline.start('hi');
   assert.match(hindi.turns[0].text, /वॉइस एजेंट/);
   const fallback = await offline.ask(hindi.id, 'आप क्या करते हैं?');
