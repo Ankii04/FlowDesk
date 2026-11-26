@@ -66,7 +66,7 @@ function renderSession() {
   if (!active) return;
   const { profile, qualification, turns, proposed, offers } = active;
   list($('profile'), {
-    'Use case': profile.need, 'Team size': profile.teamSize,
+    'Name': profile.name, 'Use case': profile.need, 'Team size': profile.teamSize,
     'Timeline': profile.timelineDays == null ? null : profile.timelineDays + ' days',
     'Language': ({ en: 'English', hi: 'Hindi', kn: 'Kannada' }[active.language] || active.language),
     'Outcome': qualification.outcome, 'Reason': qualification.reason, 'Sentiment': active.sentiment.label,

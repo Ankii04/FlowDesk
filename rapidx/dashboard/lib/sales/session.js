@@ -14,7 +14,9 @@ const PHRASES = {
   en: {
     langName: 'English',
     locale: 'en-IN',
-    greet: 'Hi, I’m the FlowDesk sales assistant. We offer an AI voice agent that answers sales inquiries and helps book demos. What would you like to know about it?',
+    greet: 'Hi, I’m the FlowDesk sales assistant. We offer an AI voice agent that answers sales inquiries and helps book demos. What name should I call you by? You can also ask a product question right away.',
+    nameSaved: name => `Nice to meet you, ${name}. What would you like to know about FlowDesk?`,
+    recallName: name => name ? `You asked me to call you ${name}.` : 'You haven’t shared a name yet.',
     timelineSaved: days => days === 0 ? 'Got it, you want to start today.' : days === 1 ? 'Got it, you want to start tomorrow.' : `Got it, you want to start in about ${days} days.`,
     askAbout: 'I can help with the voice agent’s features, pricing, or a product demo.',
     askNeed: 'What would you use FlowDesk for?',
@@ -31,7 +33,9 @@ const PHRASES = {
   hi: {
     langName: 'Hindi',
     locale: 'hi-IN',
-    greet: 'नमस्ते, मैं FlowDesk का एआई सेल्स सहायक हूँ। हम व्यवसायों के लिए एआई वॉइस एजेंट पेश करते हैं। आप क्या जानना चाहेंगे?',
+    greet: 'नमस्ते, मैं FlowDesk का एआई सेल्स सहायक हूँ। हम व्यवसायों के लिए एआई वॉइस एजेंट पेश करते हैं। मैं आपको किस नाम से बुलाऊँ? आप सीधे उत्पाद का सवाल भी पूछ सकते हैं।',
+    nameSaved: name => `${name}, आपसे मिलकर अच्छा लगा। आप FlowDesk के बारे में क्या जानना चाहेंगे?`,
+    recallName: name => name ? `आपने कहा था कि मैं आपको ${name} बुलाऊँ।` : 'आपने अभी अपना नाम नहीं बताया है।',
     timelineSaved: days => days === 0 ? 'समझ गया, आप आज शुरू करना चाहते हैं।' : `समझ गया, आप ${days} दिन में शुरू करना चाहते हैं।`,
     askAbout: 'मैं वॉइस एजेंट की सुविधाएँ, कीमत और डेमो के बारे में बता सकता हूँ।',
     askNeed: 'आप किस काम के लिए FlowDesk इस्तेमाल करना चाहते हैं?',
@@ -48,7 +52,9 @@ const PHRASES = {
   kn: {
     langName: 'Kannada',
     locale: 'kn-IN',
-    greet: 'ನಮಸ್ಕಾರ, ನಾನು FlowDesk ಸೇಲ್ಸ್ ಸಹಾಯಕ. ನಮ್ಮ AI ವಾಯ್ಸ್ ಏಜೆಂಟ್ ಗ್ರಾಹಕರ ಪ್ರಶ್ನೆಗಳಿಗೆ ಉತ್ತರಿಸಿ ಡೆಮೊ ಬುಕ್ ಮಾಡಲು ಸಹಾಯ ಮಾಡುತ್ತದೆ. ಇನ್ನೇನು ತಿಳಿಯಲು ಬಯಸುತ್ತೀರಿ?',
+    greet: 'ನಮಸ್ಕಾರ, ನಾನು FlowDesk ಸೇಲ್ಸ್ ಸಹಾಯಕ. ನಮ್ಮ AI ವಾಯ್ಸ್ ಏಜೆಂಟ್ ಗ್ರಾಹಕರ ಪ್ರಶ್ನೆಗಳಿಗೆ ಉತ್ತರಿಸಿ ಡೆಮೊ ಬುಕ್ ಮಾಡಲು ಸಹಾಯ ಮಾಡುತ್ತದೆ. ನಾನು ನಿಮ್ಮನ್ನು ಯಾವ ಹೆಸರಿನಿಂದ ಕರೆಯಲಿ? ನೀವು ಉತ್ಪನ್ನದ ಬಗ್ಗೆ ನೇರವಾಗಿ ಕೇಳಬಹುದು.',
+    nameSaved: name => `${name}, ನಿಮ್ಮನ್ನು ಭೇಟಿಯಾದದ್ದು ಸಂತೋಷ. FlowDesk ಬಗ್ಗೆ ಏನು ತಿಳಿಯಲು ಬಯಸುತ್ತೀರಿ?`,
+    recallName: name => name ? `ನಿಮ್ಮನ್ನು ${name} ಎಂದು ಕರೆಯಲು ನೀವು ಹೇಳಿದ್ದೀರಿ.` : 'ನೀವು ಇನ್ನೂ ನಿಮ್ಮ ಹೆಸರನ್ನು ಹೇಳಿಲ್ಲ.',
     timelineSaved: days => days === 0 ? 'ಅರ್ಥವಾಯಿತು, ನೀವು ಇಂದೇ ಪ್ರಾರಂಭಿಸಲು ಬಯಸುತ್ತೀರಿ.' : `ಅರ್ಥವಾಯಿತು, ನೀವು ${days} ದಿನಗಳಲ್ಲಿ ಪ್ರಾರಂಭಿಸಲು ಬಯಸುತ್ತೀರಿ.`,
     askAbout: 'ವಾಯ್ಸ್ ಏಜೆಂಟ್‌ನ ವೈಶಿಷ್ಟ್ಯಗಳು, ಬೆಲೆ ಅಥವಾ ಡೆಮೊ ಬಗ್ಗೆ ನಾನು ಸಹಾಯ ಮಾಡಬಹುದು.',
     askNeed: 'ನೀವು ಯಾವ ಕೆಲಸಕ್ಕಾಗಿ FlowDesk ಬಳಸಲು ಬಯಸುತ್ತೀರಿ?',
@@ -143,6 +149,18 @@ function captureProfile(session, text) {
   }
 }
 
+function readProspectName(text, allowBare) {
+  const cleaned = text.trim().replace(/[.!।]+$/, '');
+  const introduction = cleaned.match(/^(?:my name is|you can call me|call me|i am|i['’]m|मेरा नाम|ನನ್ನ ಹೆಸರು)\s+(.+)$/iu);
+  if (!introduction && !allowBare) return null;
+  const name = (introduction?.[1] || cleaned).replace(/\s+है$/u, '').trim().normalize('NFC');
+  if (name.length < 2 || name.length > 60 ||
+      !/^\p{L}[\p{L}\p{M}'’-]*(?: +\p{L}[\p{L}\p{M}'’-]*){0,3}$/u.test(name)) return null;
+  const words = tokens(name);
+  if (words.some(word => /^(?:okay|ok|so|um|uh|hmm|alright|right|yes|no|skip|hello|hi|hey|thanks|today|tomorrow|next|start|team|people|product|pricing|price|buy|demo|interested|ready|fine|good|from|about|what|how|need|want|can|we|not|prefer|nope|answer|handle|capture|route|book|help|sales|support|customer|calls|inbound|outbound|lead|leads|questions|नमस्ते|धन्यवाद|आज|कल|ನಮಸ್ಕಾರ|ಧನ್ಯವಾದ|ಇಂದು|ನಾಳೆ)$/iu.test(word))) return null;
+  return name;
+}
+
 function slotLabel(slot, language) {
   return new Intl.DateTimeFormat(say(language).locale, {
     timeZone: slot.timeZone, dateStyle: 'full', timeStyle: 'short',
@@ -169,7 +187,7 @@ function createSales({ crm, chat, now = Date.now }) {
     const account = scope(ctx);
     if ([...sessions.values()].filter(item => item.account === account && !item.saved).length >= 4) throw problem('Too many open demo sessions. Finish one or wait for expiration.', 429);
     if (sessions.size >= 100) throw problem('Demo session capacity reached.', 503);
-    const session = { id: randomUUID(), account, language, profile: {}, lastSources: [], turns: [], offers: [], proposed: null,
+    const session = { id: randomUUID(), account, language, profile: {}, awaitingName: true, nextNamedReply: 0, lastSources: [], turns: [], offers: [], proposed: null,
       objection: '', sentiment: { label: 'Unclear', reason: 'No explicit reaction detected.' }, expiresAt: now() + idleMs, busy: false, saved: null };
     reply(session, say(language).greet);
     sessions.set(session.id, session);
@@ -177,6 +195,11 @@ function createSales({ crm, chat, now = Date.now }) {
   }
 
   function reply(session, text, passages = [], warning) {
+    const { name } = session.profile;
+    if (name && session.turns.length >= session.nextNamedReply) {
+      text = name + ', ' + text;
+      session.nextNamedReply = session.turns.length + 6;
+    }
     const sources = passages.map(({ id, title }) => ({ id, title }));
     session.turns.push({ role: 'assistant', text, ...(sources.length && { source: sources[0], sources }), ...(warning && { warning }) });
   }
@@ -199,7 +222,7 @@ function createSales({ crm, chat, now = Date.now }) {
           'If none of the catalog supports the request, return an empty sources array. Return only JSON with keys answer (string) and sources (array of catalog IDs actually supporting the answer).',
         messages: [{ role: 'user', text: JSON.stringify({
           question: text,
-          context: session.turns.slice(-4, -1).map(({ role, text: message }) => ({ role, text: message.slice(0, 180) })),
+          context: session.turns.slice(-4, -1).map(({ role, text: message }) => ({ role, text: (session.profile.name ? message.replaceAll(session.profile.name, '[prospect]') : message).slice(0, 180) })),
         }) }, { role: 'user', text: JSON.stringify({
           catalog: catalog.map(entry => ({ id: entry.id, facts: entry[session.language] })),
         }) }],
@@ -231,6 +254,26 @@ function createSales({ crm, chat, now = Date.now }) {
       !has(text, /\b(?:does|can) (?:it|the agent|the voice agent|flowdesk)\b/i);
     const match = digits(text).match(/^(?:slot|स्लॉट|ಸ್ಲಾಟ್)\s*([1-6])[.!।]?$/i);
     const ranked = rankPassages(text);
+    const name = readProspectName(text, session.awaitingName && !question && !wantsSlots && !ranked.length && relativeTimeline(text) == null);
+    session.awaitingName = false;
+    if (name) {
+      session.profile.name = name;
+      session.turns.push({ role: 'user', text });
+      session.nextNamedReply = session.turns.length + 1;
+      reply(session, p.nameSaved(name));
+      return;
+    }
+    if (/^(?:what(?:['’]s| is) my name|do you remember my name|मेरा नाम क्या है|ನನ್ನ ಹೆಸರು ಏನು)[?？.!। ]*$/iu.test(text)) {
+      session.turns.push({ role: 'user', text });
+      reply(session, p.recallName(session.profile.name));
+      return;
+    }
+    if (/^(?:skip|prefer not to say|no name|I'd rather not|नाम नहीं बताना|ಹೆಸರು ಹೇಳಲು ಇಷ್ಟವಿಲ್ಲ)[.!। ]*$/iu.test(text)) {
+      session.turns.push({ role: 'user', text });
+      reply(session, p.askAbout);
+      return;
+    }
+
     if (match && session.offers[Number(match[1]) - 1]) {
       const offer = session.offers[Number(match[1]) - 1];
       session.turns.push({ role: 'user', text });

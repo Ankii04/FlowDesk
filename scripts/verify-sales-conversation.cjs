@@ -35,6 +35,7 @@ async function main() {
   });
   const { id, turns } = liveFixture.start('en');
   assert.match(turns[0].text, /offer an AI voice agent/);
+  assert.match(turns[0].text, /what name should i call you by/i);
   const about = await liveFixture.ask(id, 'What does your voice agent do');
   assert.equal(about.turns.at(-1).source.id, 'FAQ-02');
   assert.match(about.turns.at(-1).text, /AI receptionist/);
@@ -82,6 +83,25 @@ async function main() {
   assert.equal(today.profile.timelineDays, 0);
   assert.equal(today.profile.need, undefined);
   assert.equal((await offline.ask(relativeOnly.id, 'Next week')).profile.timelineDays, 7);
+  const named = liveFixture.start('en');
+  const introduction = await liveFixture.ask(named.id, 'My name is Asha Rao.');
+  assert.equal(introduction.profile.name, 'Asha Rao');
+  assert.equal(introduction.profile.need, undefined);
+  assert.match(introduction.turns.at(-1).text, /Nice to meet you, Asha Rao/);
+  const personalized = await liveFixture.ask(named.id, 'Does it speak Hindi and save leads to a CRM?');
+  assert.match(personalized.turns.at(-1).text, /^Asha Rao, /);
+  assert.ok(!JSON.stringify(modelInput.context).includes('Asha Rao'));
+  const corrected = await liveFixture.ask(named.id, 'Call me Asha.');
+  assert.equal(corrected.profile.name, 'Asha');
+  assert.match((await liveFixture.ask(named.id, 'What is my name?')).turns.at(-1).text, /Asha/);
+  const nameFixture = fixture(async () => { throw Error('fixture outage'); });
+  const bare = nameFixture.start('en');
+  assert.equal((await nameFixture.ask(bare.id, 'Vikram')).profile.name, 'Vikram');
+  const skip = nameFixture.start('en');
+  assert.equal((await nameFixture.ask(skip.id, 'Skip')).profile.name, undefined);
+  const afterSkip = await nameFixture.ask(skip.id, 'How can I buy this product?');
+  assert.equal(afterSkip.turns.at(-1).source.id, 'FAQ-10');
+
   const hindi = offline.start('hi');
   assert.match(hindi.turns[0].text, /वॉइस एजेंट/);
   const fallback = await offline.ask(hindi.id, 'आप क्या करते हैं?');
@@ -97,6 +117,6 @@ async function main() {
   const kannadaOverview = await offline.ask(kannada.id, 'FlowDesk ಏನು ಮಾಡುತ್ತದೆ?');
   assert.equal(kannadaOverview.turns.at(-1).source.id, 'FAQ-02');
   assert.match(kannadaOverview.turns.at(-1).text, /ರಿಸೆಪ್ಷನಿಸ್ಟ್/);
-  console.log('PASS: introduction, natural question without punctuation, multiple topics, follow-up context, sales scope, Hindi and Kannada, outage, relative timelines, purchase and benefits, and explicit booking.');
+  console.log('PASS: introduction, natural question without punctuation, multiple topics, follow-up context, sales scope, session names and skipping, Hindi and Kannada, outage, relative timelines, purchase and benefits, and explicit booking.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
