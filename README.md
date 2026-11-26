@@ -1,6 +1,6 @@
 # FlowDesk Sales Assistant
 
-Individual prototype for Fortivex AI Round 3, **Project 1 · Autonomous AI Sales Voice Agent**. Process **OC.44671.2027.65164**. Evaluation reporting **26 November 2026, 3:00 PM IST**.
+Individual prototype for Fortivex AI Round 3, **Project 1 · Autonomous AI Sales Voice Agent**.
 
 FlowDesk is a fictional lead-routing SaaS for small B2B sales teams. The sales assistant answers product questions from a seeded FAQ, collects sales signals, and books a discovery appointment after explicit confirmation. It saves the appointment and a structured summary in LeadPulse so a salesperson can follow up with context.
 
