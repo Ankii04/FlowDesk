@@ -1,0 +1,399 @@
+// ═══════════════════════════════════════════════════════════════
+// LeadPulse — Full Prisma Schema
+// Communication Workflow Intelligence Engine
+// ═══════════════════════════════════════════════════════════════
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ENUMS
+// ═══════════════════════════════════════════════════════════════
+
+enum Role {
+  ADMIN    // Full access: manage users, view all leads, settings
+  MANAGER  // View all leads in org, assign agents, view metrics
+  AGENT    // Can only see leads assigned to them
+}
+
+enum LeadStatus {
+  NEW        // Just created, not yet contacted
+  CONTACTED  // First contact made
+  FOLLOW_UP  // Requires a follow-up action
+  INTERESTED // Lead has shown interest
+  CLOSED     // Successfully converted
+  LOST       // Lead did not convert
+}
+
+enum LeadPriority {
+  HOT   // Score >= 70
+  WARM  // Score 40–69
+  COLD  // Score < 40
+}
+
+enum LeadSource {
+  WEBSITE      // Organic website inquiry
+  REFERRAL     // Referred by existing customer
+  SOCIAL_MEDIA // From social platforms
+  COLD_CALL    // Outbound cold call
+  EMAIL        // Email campaign
+  WHATSAPP     // WhatsApp inquiry
+  OTHER
+}
+
+enum ConversationType {
+  CALL        // Phone call (inbound or outbound)
+  WHATSAPP    // WhatsApp message
+  EMAIL       // Email communication
+  SMS         // SMS message
+  NOTE        // Internal note by agent
+  FOLLOW_UP   // Scheduled follow-up entry
+}
+
+enum ConversationDirection {
+  INBOUND   // Customer initiated
+  OUTBOUND  // Agent initiated
+}
+
+enum ConversationStatus {
+  PENDING    // Not yet actioned
+  COMPLETED  // Interaction completed
+  MISSED     // Missed call or no response
+  SCHEDULED  // Scheduled for later
+}
+
+enum ActivityType {
+  LEAD_CREATED       // Lead was first created
+  LEAD_UPDATED       // Lead fields updated
+  STATUS_CHANGED     // LeadStatus changed
+  PRIORITY_CHANGED   // HOT/WARM/COLD changed
+  CONVERSATION_ADDED // New call/message/note added
+  SCORE_CHANGED      // Lead score updated by engine
+  AGENT_ASSIGNED     // Lead assigned/reassigned
+  SLA_BREACHED       // SLA threshold crossed
+  FOLLOW_UP_SET      // Follow-up scheduled
+  FOLLOW_UP_MISSED   // Follow-up was missed
+  NOTE_ADDED         // Internal note added
+}
+
+enum NotificationType {
+  SLA_BREACH       // SLA response time exceeded
+  FOLLOW_UP_DUE    // Scheduled follow-up is due
+  INACTIVITY_ALERT // Lead has been inactive too long
+  ASSIGNMENT       // Lead assigned to this agent
+  SCORE_DROP       // Lead score dropped significantly
+  SYSTEM           // Generic system notification
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+  DISMISSED
+}
+
+enum WorkflowJobType {
+  FOLLOW_UP_REMINDER   // Remind agent to follow up
+  SLA_CHECK            // Check if SLA is breached
+  INACTIVITY_CHECK     // Check for lead inactivity
+  SCORE_RECALCULATION  // Recalculate lead score
+  BULK_STATUS_UPDATE   // Mass update lead statuses
+}
+
+enum WorkflowJobStatus {
+  PENDING      // Created, waiting for worker
+  PROCESSING   // Worker picked it up
+  COMPLETED    // Finished successfully
+  FAILED       // Failed, will retry
+  RETRYING     // In backoff retry cycle
+  DEAD_LETTER  // Max retries exceeded — moved to DLQ
+  CANCELLED    // Manually cancelled
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODEL: User
+// System users — admins, managers, and agents
+// ═══════════════════════════════════════════════════════════════
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  phone        String?
+  role         Role     @default(AGENT)
+  isActive     Boolean  @default(true)
+  avatarUrl    String?
+  timezone     String   @default("Asia/Kolkata")
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  assignedLeads   Lead[]          @relation("AgentLeads")
+  refreshTokens   RefreshToken[]
+  conversations   Conversation[]  @relation("AgentConversations")
+  activities      Activity[]      @relation("ActorActivities")
+  notifications   Notification[]
+  workflowJobs    WorkflowJob[]
+
+  @@index([email])
+  @@index([role])
+  @@index([isActive])
+  @@map("users")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODEL: RefreshToken
+// Stores valid refresh tokens for JWT rotation
+// ═══════════════════════════════════════════════════════════════
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  isRevoked Boolean  @default(false)
+  createdAt DateTime @default(now())
+  userAgent String?  // Track which device issued the token
+  ipAddress String?
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODEL: Lead
+// Core entity — represents a customer/prospect
+// ═══════════════════════════════════════════════════════════════
+model Lead {
+  id                  String       @id @default(cuid())
+  customerName        String
+  phone               String
+  email               String?
+  source              LeadSource   @default(OTHER)
+  status              LeadStatus   @default(NEW)
+  priority            LeadPriority @default(COLD)
+
+  // Lead Score (0–100, drives priority label)
+  score               Int          @default(0)
+
+  // Assignment
+  assignedAgentId     String?
+  assignedAgent       User?        @relation("AgentLeads", fields: [assignedAgentId], references: [id])
+
+  // SLA Tracking
+  firstContactAt      DateTime?    // When first conversation happened
+  firstResponseTime   Int?         // Minutes from creation to first contact
+  lastActivityAt      DateTime?    // Last any activity (conversation/note)
+  nextFollowUpAt      DateTime?    // Scheduled next follow-up
+  slaBreached         Boolean      @default(false)
+  slaBreachedAt       DateTime?
+
+  // Metadata
+  notes               String?      // General notes about this lead
+  tags                String[]     // Flexible tagging e.g. ["vip", "enterprise"]
+  customFields        Json?        // Extensible — store arbitrary data
+
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  closedAt            DateTime?    // Set when status → CLOSED or LOST
+
+  // Relations
+  conversations       Conversation[]
+  activities          Activity[]
+  notifications       Notification[]
+  workflowJobs        WorkflowJob[]
+
+  @@index([assignedAgentId])
+  @@index([status])
+  @@index([priority])
+  @@index([score])
+  @@index([slaBreached])
+  @@index([nextFollowUpAt])
+  @@index([lastActivityAt])
+  @@index([createdAt])
+  @@map("leads")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODEL: Conversation
+// Every communication event with a lead
+// (call, WhatsApp, email, note, follow-up)
+// ═══════════════════════════════════════════════════════════════
+model Conversation {
+  id          String                @id @default(cuid())
+  leadId      String
+  agentId     String?
+  type        ConversationType
+  direction   ConversationDirection @default(OUTBOUND)
+  status      ConversationStatus    @default(COMPLETED)
+
+  // Content
+  summary     String?    // Brief summary of what was discussed
+  notes       String?    // Detailed notes
+  duration    Int?       // Call duration in seconds (for CALL type)
+  mediaUrl    String?    // Recording URL or attachment
+
+  // Scheduling (for FOLLOW_UP type)
+  scheduledAt DateTime?  // When the follow-up is scheduled
+  completedAt DateTime?  // When the follow-up was completed
+
+  // Response tracking (for scoring engine)
+  respondedWithinSla Boolean @default(false)
+  responseTimeMinutes Int?   // How long it took to respond
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  lead  Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  agent User? @relation("AgentConversations", fields: [agentId], references: [id])
+
+  @@index([leadId])
+  @@index([agentId])
+  @@index([type])
+  @@index([status])
+  @@index([scheduledAt])
+  @@index([createdAt])
+  @@map("conversations")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODEL: Activity
+// Immutable event log / audit trail for everything that happens
+// Think of this as the "timeline" for a lead or the whole system
+// ═══════════════════════════════════════════════════════════════
+model Activity {
+  id          String       @id @default(cuid())
+  leadId      String?
+  actorId     String?      // The user who triggered this (null = system/worker)
+  type        ActivityType
+  description String       // Human-readable description of what happened
+
+  // Structured before/after state for diffs
+  previousValue Json?      // State before the change
+  newValue      Json?      // State after the change
+
+  // Extra context
+  metadata    Json?        // Any extra data (e.g., { scoreChange: +20, reason: "quick_reply" })
+
+  createdAt   DateTime @default(now())
+
+  // Relations
+  lead  Lead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  actor User? @relation("ActorActivities", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([leadId])
+  @@index([actorId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("activities")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODEL: Notification
+// In-app notifications sent to users
+// (SLA alerts, follow-up reminders, assignment notices)
+// ═══════════════════════════════════════════════════════════════
+model Notification {
+  id        String             @id @default(cuid())
+  userId    String             // Who receives this notification
+  leadId    String?            // Related lead (optional)
+  type      NotificationType
+  status    NotificationStatus @default(UNREAD)
+  title     String
+  message   String
+  metadata  Json?              // Extra context for the notification
+  readAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lead Lead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([leadId])
+  @@index([status])
+  @@index([type])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODEL: WorkflowJob
+// Tracks every background job that BullMQ processes
+// Gives us visibility into the job queue from the DB side
+// ═══════════════════════════════════════════════════════════════
+model WorkflowJob {
+  id          String            @id @default(cuid())
+  bullmqJobId String?           // The actual BullMQ job ID (set after enqueue)
+  type        WorkflowJobType
+  status      WorkflowJobStatus @default(PENDING)
+
+  // Targeting
+  leadId      String?           // Which lead this job is about
+  userId      String?           // Which user triggered/owns this job
+
+  // Job payload — the data passed to the worker
+  payload     Json
+
+  // Execution tracking
+  attempts    Int     @default(0)  // How many times this job has been tried
+  maxAttempts Int     @default(3)
+  lastError   String?              // Last error message
+  result      Json?                // What the worker returned
+
+  // Scheduling
+  scheduledAt DateTime?  // For delayed jobs
+  startedAt   DateTime?  // When worker picked it up
+  completedAt DateTime?
+  failedAt    DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  lead Lead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([type])
+  @@index([status])
+  @@index([leadId])
+  @@index([userId])
+  @@index([scheduledAt])
+  @@index([bullmqJobId])
+  @@index([createdAt])
+  @@map("workflow_jobs")
+}
+
+model SalesSlot {
+  id        String    @id
+  startsAt  DateTime
+  timeZone  String
+  run       SalesRun?
+
+  @@map("sales_slots")
+}
+
+model SalesRun {
+  id          String     @id @db.Uuid
+  account     String
+  result      Json
+  slotId      String?    @unique
+  slot        SalesSlot? @relation(fields: [slotId], references: [id])
+  createdAt   DateTime   @default(now())
+
+  @@index([account, createdAt])
+  @@map("sales_runs")
+}

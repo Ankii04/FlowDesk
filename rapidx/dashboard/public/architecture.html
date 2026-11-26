@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FlowDesk Architecture</title>
+  <link rel="stylesheet" href="assets/sales.css">
+</head>
+<body>
+  <header><strong>FlowDesk</strong><span>System architecture</span><a href="sales.html">Sales assistant</a></header>
+  <main>
+    <h1>FlowDesk architecture</h1>
+    <div class="arch-grid">
+      <section class="card">
+        <h2>Submitted prototype</h2>
+        <div class="diagram-wrap">
+          <img src="assets/flowdesk-local.svg" alt="Browser through FlowDesk voice gateway STT and TTS, FAQ retrieval and session rules, LeadPulse CRM, and PostgreSQL persistence.">
+        </div>
+      </section>
+      <section class="card">
+        <h2>Proposed production architecture</h2>
+        <div class="diagram-wrap">
+          <img src="assets/flowdesk-production.svg" alt="Regional voice workers, stateless sales API, Redis memory, tenant knowledge index, PostgreSQL, and outbox workers.">
+        </div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>
