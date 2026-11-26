@@ -7,7 +7,7 @@ This table describes source found in the accessible checkouts, before runtime ve
 | Requirement | Existing files inspected | Reuse and Round 3 work |
 |---|---|---|
 | Browser voice and timeouts | `rapidx/dashboard/public/assets/app.js` · `rapidx/dashboard/server.js` · `rapidx/dashboard/lib/providers.js` | Reuse authenticated per-turn STT and TTS plus the MediaRecorder pattern. Keep both previous patches for the general console. Sales has its own focused page and defaults to the per-turn HTTP lane, so a streaming WebSocket outage cannot stop capture. |
-| Context, languages, FAQ | `rapidx/dashboard/lib/providers.js` | Add scoped short-lived sales state, English/Hindi choice, lexical retrieval, sourced replies, and typed route through the same logic. |
+| Context, languages, FAQ | `rapidx/dashboard/lib/providers.js` | Add scoped short-lived sales state, English/Hindi choice, ranked product catalog, conversational sourced replies, and typed route through the same logic. |
 | CRM login and leads | `leadpulse/src/modules/auth/auth.routes.ts` · `leadpulse/src/middleware/auth.ts` · `leadpulse/src/modules/leads/lead.routes.ts` · `leadpulse/src/modules/leads/lead.service.ts` | Reuse JWT login and lead and conversation data models. Add an authenticated transaction endpoint rather than chaining multiple non-atomic writes. Verify the result with the existing lead read endpoint. |
 | Lead scoring | `leadpulse/src/modules/scoring/scoring.service.ts` | Its score measures engagement and response latency. Discovery fit uses explicit need, size and rollout data. Keep the fit outcome and reason separate so they don't alter LeadPulse's engagement score. |
 | Timeline and data | `leadpulse/src/modules/conversations/conversation.routes.ts` · `conversation.service.ts` · `conversation.repository.ts` · `leadpulse/prisma/schema.prisma` | Reuse timeline reads. Add availability and booking, an atomic activity entry, a structured summary and a migration. Limit the selected fields on timeline actors. |
@@ -30,6 +30,10 @@ This table describes source found in the accessible checkouts, before runtime ve
 | External calendar | Designed for later | Emit the booking ID from a transactional outbox. A calendar worker uses it as the external idempotency key and reconciles remote conflicts. Test duplicate events, provider downtime and cancellation in a sandbox. |
 | Long-term memory and richer sentiment | Designed for later | A tenant-scoped opt-in profile store restores verified details. A separate review pipeline can classify sentiment on labeled, consented data and record confidence. Test expiry, deletion, authorization, ambiguity, and bias across languages. |
 | 100,000 registered users | Designed for later | Capacity and load test targets in [architecture.md](architecture.md). No scale test was claimed. |
+
+## Voice-agent product update
+
+Run `node scripts/verify-sales-conversation.cjs` for deterministic checks of the introduction, unpunctuated product questions, multiple topics, conversational follow-ups, the product boundary, Hindi and Kannada, provider failure, and explicit booking. An English live Groq check returned both CRM and Hindi support sources for a compound question, answered a phone-channel follow-up, and declined an unrelated sports question. The product overview still answered from the catalog when live generation fell back. Kannada product replies were checked with the catalog fallback. Browser microphone and playback for this update were not re-tested.
 
 ## Runtime evidence
 

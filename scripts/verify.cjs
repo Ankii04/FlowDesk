@@ -41,12 +41,12 @@ async function verify({ configureFault = async () => {}, assertFault = false } =
   const unknown = await turn(id, 'Does it work on Mars?');
   assert.match(unknown.turns.at(-1).text, /FAQ does not cover/);
   assert.equal(unknown.turns.at(-1).source, undefined);
-  await turn(id, 'We need to route inbound leads.');
+  await turn(id, 'We need an agent to answer inbound product inquiries.');
   await turn(id, 'We have 12 people.');
   const memory = await turn(id, 'We want to start in 30 days.');
   assert.match(memory.turns.at(-1).text, /12 people.*30-day/);
   assert.equal(memory.qualification.outcome, 'Qualified');
-  assert.match(memory.profile.need, /route inbound/i);
+  assert.match(memory.profile.need, /inbound product inquiries/i);
 
   const cautious = await turn(id, 'I am concerned about the budget.');
   assert.equal(cautious.sentiment.label, 'Cautious');

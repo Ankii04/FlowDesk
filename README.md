@@ -2,7 +2,7 @@
 
 Individual prototype for Fortivex AI Round 3, **Project 1 · Autonomous AI Sales Voice Agent**.
 
-FlowDesk is a fictional lead-routing SaaS for small B2B sales teams. The sales assistant answers product questions from a seeded FAQ, collects sales signals, and books a discovery appointment after explicit confirmation. It saves the appointment and a structured summary in LeadPulse so a salesperson can follow up with context.
+FlowDesk is a fictional company selling an AI voice agent for inbound B2B sales. The demo assistant introduces that product, answers natural sales questions from a product catalog in English, Hindi and Kannada, and books a discovery appointment after explicit confirmation. It saves the appointment and a structured summary in LeadPulse so a salesperson can follow up with context.
 
 - [One-page project report](REPORT.md) · [Print-ready report](REPORT.pdf)
 - [Architecture and 100,000-user design](docs/architecture.md) · [Security, deployment, and costs](docs/operations.md)
@@ -38,7 +38,7 @@ Setup creates the ignored root `.env`, generates separate local demo and CRM cre
 
 1. Open **FlowDesk demo**, sign in with the local demo credentials printed by `node scripts/control.cjs login`, choose English, and acknowledge the disclosure.
 2. Uncheck **Speak replies** for a typed-only backup. With it checked, use **Speak a turn**, speak, then click **Send voice turn**. The assistant displays the transcript and reads its reply. Provider failures appear in the status message.
-3. Ask **“What is the price?”** and point out **FAQ-01**. Give a use case, **12 people**, and **30 days**. The assistant repeats those earlier details and shows the qualification reason.
+3. Ask **“What does your voice agent do?”** and point out **FAQ-02**. Follow with **“Can it speak Hindi and save leads to our CRM?”** or **“What is the price?”**. The demo price is illustrative. Give a use case, **12 people**, and **30 days**. The assistant repeats those earlier details and shows the qualification reason.
 4. Say **“Show available demo slots”**, pick a time, and click the button that confirms the exact date, time and IST timezone. The UI shows the booking reference and LeadPulse timeline.
 5. Reload the page and click **Refresh LeadPulse**. The record is fetched from LeadPulse using the saved reference.
 

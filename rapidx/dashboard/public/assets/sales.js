@@ -75,7 +75,9 @@ function renderSession() {
     const entry = node('div');
     entry.className = 'turn ' + turn.role;
     entry.append(node('strong', turn.role === 'user' ? 'Prospect' : 'FlowDesk'), node('p', turn.text));
-    if (turn.source) entry.append(node('small', turn.source.id + ' · ' + turn.source.title));
+    for (const source of turn.sources || (turn.source ? [turn.source] : [])) {
+      entry.append(node('small', source.id + ' · ' + source.title));
+    }
     if (turn.warning) entry.append(node('small', turn.warning));
     return entry;
   });

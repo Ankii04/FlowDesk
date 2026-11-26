@@ -3,11 +3,11 @@
 
 ## Business problem and customer
 
-Small B2B software sales teams spend time answering repeated product questions, collecting incomplete lead details, and manually moving notes into a CRM. Prospects who contact the business outside working hours may wait until the next day. FlowDesk, a fictional lead-routing SaaS, demonstrates how a browser voice assistant can qualify those early conversations and hand the sales team an appointment with usable context.
+Small B2B software sales teams spend time answering repeated product questions, collecting incomplete lead details, and manually moving notes into a CRM. Prospects who contact the business outside working hours may wait until the next day. FlowDesk is a fictional company selling a voice agent for inbound sales. Its browser demo lets prospects ask what the product offers and hands sales teams an appointment with usable context.
 
 ## Workflow and implementation
 
-A prospect acknowledges the demo disclosure, selects English or Hindi, and speaks or types. RapidX records each spoken turn in the browser, transcribes it through Deepgram, and sends the transcript to a server-side sales session. The session keeps the prospect’s use case, team size, rollout timeline, language, and proposed slot. Keyword overlap selects a passage from a small product FAQ. Groq can rephrase that passage and the interface shows its source. Unsupported questions receive an explicit knowledge-gap response. Rumik synthesizes the reply. Qualification uses visible rules and routes incomplete profiles for human review.
+A prospect acknowledges the demo disclosure, selects English or Hindi, and speaks or types. RapidX records each spoken turn in the browser, transcribes it through Deepgram, and sends the transcript to a server-side sales session. The session keeps the prospect’s use case, team size, rollout timeline, language, and proposed slot. Keyword ranking prioritizes a bilingual product catalog. Groq uses those facts and recent turns to answer natural follow-up questions. The interface shows the cited entries. Unsupported questions receive an explicit knowledge-gap response. Rumik synthesizes the reply. Qualification uses visible rules and routes incomplete profiles for human review.
 
 Booking is a separate server action. LeadPulse reads actual local availability from PostgreSQL. The prospect confirms the displayed date, time, and timezone. A single transaction writes the appointment reference, lead, completed conversation and timeline activity. A session identifier makes a repeated confirmation safe, and a unique slot constraint prevents two prospects booking the same time. Reloading the browser retrieves the stored summary and CRM activity.
 

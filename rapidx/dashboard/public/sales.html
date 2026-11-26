@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>FlowDesk Sales Assistant</title>
   <link rel="stylesheet" href="/assets/sales.css">
-  <script src="/assets/sales.js" defer></script>
+  <script src="/assets/sales.js?v=voice-product" defer></script>
 </head>
 <body>
   <header><strong>FlowDesk</strong><span>Sales assistant</span><a href="/architecture.html">Architecture</a></header>
   <main>
-    <h1>Product discovery and demo booking</h1>
-    <p class="intro">Ask about FlowDesk, describe your team, and book a discovery demo.</p>
+    <h1>Meet the FlowDesk Voice Agent</h1>
+    <p class="intro">Talk to our AI sales assistant about the voice agent we offer for your business.</p>
     <p id="status" role="status" aria-live="polite"></p>
     <form id="login" class="card" hidden>
       <h2>Sign in to the demo</h2>
@@ -34,12 +34,17 @@
           <div class="row"><button id="mic" type="button">Speak a turn</button><label class="check"><input id="speech" type="checkbox" checked> Speak replies</label><label class="check"><input id="autolisten" type="checkbox" checked> Auto-listen</label></div>
           <form id="typed">
             <label for="text">Type a turn</label>
-            <div class="row"><input id="text" placeholder="What is the price?" maxlength="600" required><button>Send</button></div>
+            <div class="row"><input id="text" placeholder="What does your voice agent do?" maxlength="600" required><button>Send</button></div>
           </form>
           <button id="finish" class="quiet" type="button">Save without booking</button>
         </div>
       </section>
       <aside>
+        <section class="card">
+          <h2>Product demo</h2>
+          <p>FlowDesk Voice Agent answers incoming sales inquiries, qualifies prospects, and books demos after confirmation.</p>
+          <p>Try asking “What do you offer?”, “Can it speak Hindi?”, or “Where do the leads go?”</p>
+        </section>
         <section class="card"><h2>Prospect details</h2><dl id="profile"></dl></section>
         <section class="card"><h2>Appointment</h2><div id="slots"><p>Ask to see available demo times.</p></div></section>
         <section class="card"><h2>LeadPulse record</h2><div id="saved"><p>The saved timeline will appear here.</p></div><button id="refresh" class="quiet" type="button" hidden>Refresh LeadPulse</button></section>
