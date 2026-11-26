@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 560" width="100%" height="auto" role="img" aria-label="Future proposed FlowDesk architecture diagram">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#113b35"/>
+    </marker>
+    <style>
+      .bg { fill: #ffffff; }
+      .box { fill: #eef6f1; stroke: #075744; stroke-width: 1.5; rx: 10; ry: 10; }
+      .box-accent { fill: #113b35; stroke: #113b35; stroke-width: 1.5; rx: 10; ry: 10; }
+      .box-crm { fill: #ecf0f9; stroke: #355691; stroke-width: 1.5; rx: 10; ry: 10; }
+      .box-store { fill: #fff7ed; stroke: #c25e00; stroke-width: 1.5; rx: 10; ry: 10; }
+      .title { font-family: "Segoe UI", sans-serif; font-size: 13px; font-weight: 700; fill: #113b35; text-anchor: middle; }
+      .title-w { font-family: "Segoe UI", sans-serif; font-size: 13px; font-weight: 700; fill: #ffffff; text-anchor: middle; }
+      .sub { font-family: "Segoe UI", sans-serif; font-size: 11px; fill: #2b4744; text-anchor: middle; }
+      .sub-w { font-family: "Segoe UI", sans-serif; font-size: 11px; fill: #c8e7d7; text-anchor: middle; }
+      .line { stroke: #113b35; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .dash { stroke: #355691; stroke-width: 1.5; stroke-dasharray: 5 4; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="680" height="560" rx="12"/>
+
+  <!-- Row 1: Clients -->
+  <rect class="box" x="40" y="20" width="260" height="56"/>
+  <text class="title" x="170" y="44">Browser &amp; Mobile Voice Client</text>
+  <text class="sub" x="170" y="61">Auto-listen VAD · EN / HI / KN</text>
+
+  <rect class="box" x="380" y="20" width="260" height="56"/>
+  <text class="title" x="510" y="44">Telephony Gateway (SIP / Carrier)</text>
+  <text class="sub" x="510" y="61">Inbound &amp; Outbound Calls · Barge-in</text>
+
+  <!-- Arrows down to Edge -->
+  <path class="line" d="M 170 76 L 170 100 L 310 100 L 310 112"/>
+  <path class="line" d="M 510 76 L 510 100 L 370 100 L 370 112"/>
+
+  <!-- Row 2: Edge / Gateway -->
+  <rect class="box-accent" x="140" y="114" width="400" height="56"/>
+  <text class="title-w" x="340" y="138">FlowDesk Edge &amp; Streaming Voice Gateway</text>
+  <text class="sub-w" x="340" y="155">TLS Ingress · Tenant Quotas · Full-Duplex WS (STT + TTS)</text>
+
+  <!-- Arrows down to Row 3 -->
+  <path class="line" d="M 240 170 L 170 206"/>
+  <path class="line" d="M 440 170 L 510 206"/>
+
+  <!-- Row 3: AI & Stateless API -->
+  <rect class="box" x="30" y="208" width="280" height="64"/>
+  <text class="title" x="170" y="233">Stateless Sales API Cluster</text>
+  <text class="sub" x="170" y="250">Deepgram STT · Groq LLM · Rumik TTS</text>
+  <text class="sub" x="170" y="264">Qualification Rules &amp; Slot Gating</text>
+
+  <rect class="box" x="370" y="208" width="280" height="64"/>
+  <text class="title" x="510" y="233">Tenant Hybrid RAG Index</text>
+  <text class="sub" x="510" y="250">Vector Embeddings + Lexical FAQ</text>
+  <text class="sub" x="510" y="264">Strict Citation &amp; Grounding Guardrails</text>
+
+  <path class="line" d="M 310 240 L 368 240"/>
+
+  <!-- Arrows down to Row 4 -->
+  <path class="line" d="M 170 272 L 170 314"/>
+  <path class="line" d="M 260 272 L 490 314"/>
+
+  <!-- Row 4: LeadPulse & Socket.IO -->
+  <rect class="box-crm" x="30" y="316" width="300" height="72"/>
+  <text class="title" x="180" y="340">LeadPulse CRM &amp; Socket.IO Hub</text>
+  <text class="sub" x="180" y="357">Leads · Scoring · Conversations · Metrics</text>
+  <text class="sub" x="180" y="373">Real-Time Socket.IO Live Updates</text>
+
+  <rect class="box-store" x="370" y="316" width="280" height="72"/>
+  <text class="title" x="510" y="340">Redis Cluster &amp; BullMQ Queues</text>
+  <text class="sub" x="510" y="357">Shared Session State · Pub/Sub Adapter</text>
+  <text class="sub" x="510" y="373">Async Follow-ups &amp; Outbox Workers</text>
+
+  <path class="dash" d="M 330 352 L 368 352"/>
+
+  <!-- Arrows down to Row 5 -->
+  <path class="line" d="M 180 388 L 180 434"/>
+  <path class="line" d="M 510 388 L 510 434"/>
+
+  <!-- Row 5: Persistence & External Integrations -->
+  <rect class="box-store" x="30" y="436" width="300" height="66"/>
+  <text class="title" x="180" y="460">PostgreSQL Primary + Read Replicas</text>
+  <text class="sub" x="180" y="477">Row-Level Tenant Isolation (RLS)</text>
+  <text class="sub" x="180" y="492">Atomic Bookings · Outbox · Analytics</text>
+
+  <rect class="box-crm" x="370" y="436" width="280" height="66"/>
+  <text class="title" x="510" y="460">External Sync &amp; Observability</text>
+  <text class="sub" x="510" y="477">Google / Cal.com Calendar Sync</text>
+  <text class="sub" x="510" y="492">OpenTelemetry · Metrics · Alerts (DLQ)</text>
+
+  <!-- Footer caption -->
+  <text class="sub" x="340" y="534">Future Production Target · Designed for 100,000+ Users · Multi-Region Ready</text>
+</svg>

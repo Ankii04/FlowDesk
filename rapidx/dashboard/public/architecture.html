@@ -9,18 +9,19 @@
 <body>
   <header><strong>FlowDesk</strong><span>System architecture</span><a href="sales.html">Sales assistant</a></header>
   <main>
-    <h1>FlowDesk architecture</h1>
+    <h1>FlowDesk system architecture</h1>
+    <p class="intro">End-to-end architecture combining the multilingual browser voice gateway with LeadPulse CRM, Socket.IO real-time events, and PostgreSQL persistence.</p>
     <div class="arch-grid">
-      <section class="card">
-        <h2>Submitted prototype</h2>
+      <section class="card arch-full">
+        <h2>Current live architecture</h2>
         <div class="diagram-wrap">
           <img src="assets/flowdesk-local.svg" alt="Browser through FlowDesk voice gateway STT and TTS, FAQ retrieval and session rules, LeadPulse CRM, and PostgreSQL persistence.">
         </div>
       </section>
-      <section class="card">
-        <h2>Proposed production architecture</h2>
+      <section class="card arch-full">
+        <h2>Future proposed architecture (100,000-user scale)</h2>
         <div class="diagram-wrap">
-          <img src="assets/flowdesk-production.svg" alt="Regional voice workers, stateless sales API, Redis memory, tenant knowledge index, PostgreSQL, and outbox workers.">
+          <img src="assets/flowdesk-future.svg" alt="Future proposed FlowDesk architecture with streaming voice gateway, stateless sales API, hybrid RAG, LeadPulse Socket.IO hub, Redis BullMQ workers, PostgreSQL RLS, and calendar sync.">
         </div>
       </section>
     </div>
