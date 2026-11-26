@@ -28,6 +28,8 @@ const PHRASES = {
     confirmHelp: 'Say “Confirm booking” or use the Confirm button.',
     chooseBeforeConfirm: 'Please choose an available demo time first.',
     chooseTimes: 'Choose one of these times. ',
+    slotNotFound: 'I don’t have that time in the current list. ',
+    slotAmbiguous: 'There is more than one match. Please choose a slot number. ',
     noTimes: 'There are no demo times available right now.',
     noFaq: 'My FlowDesk FAQ does not cover that question. ',
     booked: 'Your demo is booked for ',
@@ -49,6 +51,8 @@ const PHRASES = {
     confirmHelp: '“बुकिंग की पुष्टि करें” कहें या पुष्टि बटन दबाएँ।',
     chooseBeforeConfirm: 'पहले डेमो के लिए उपलब्ध समय चुनें।',
     chooseTimes: 'इनमें से एक समय चुनें। ',
+    slotNotFound: 'इस सूची में वह समय उपलब्ध नहीं है। ',
+    slotAmbiguous: 'एक से ज़्यादा समय मिल रहे हैं। कृपया स्लॉट नंबर चुनें। ',
     noTimes: 'अभी कोई समय उपलब्ध नहीं है।',
     noFaq: 'मेरे FlowDesk FAQ में इस सवाल का उत्तर नहीं है। ',
     booked: 'आपका डेमो बुक हो गया है। ',
@@ -70,6 +74,8 @@ const PHRASES = {
     confirmHelp: '“ಬುಕಿಂಗ್ ದೃಢೀಕರಿಸಿ” ಎಂದು ಹೇಳಿ ಅಥವಾ ದೃಢೀಕರಣ ಬಟನ್ ಒತ್ತಿರಿ.',
     chooseBeforeConfirm: 'ಮೊದಲು ಡೆಮೊಗೆ ಲಭ್ಯವಿರುವ ಸಮಯವನ್ನು ಆಯ್ಕೆಮಾಡಿ.',
     chooseTimes: 'ಈ ಸಮಯಗಳಲ್ಲಿ ಒಂದನ್ನು ಆಯ್ಕೆಮಾಡಿ. ',
+    slotNotFound: 'ಈ ಪಟ್ಟಿಯಲ್ಲಿ ಆ ಸಮಯ ಲಭ್ಯವಿಲ್ಲ. ',
+    slotAmbiguous: 'ಒಂದಕ್ಕಿಂತ ಹೆಚ್ಚು ಸಮಯಗಳು ಹೊಂದಿಕೆಯಾಗುತ್ತವೆ. ದಯವಿಟ್ಟು ಸ್ಲಾಟ್ ಸಂಖ್ಯೆಯನ್ನು ಆಯ್ಕೆಮಾಡಿ. ',
     noTimes: 'ಪ್ರಸ್ತುತ ಯಾವುದೇ ಡೆಮೊ ಸಮಯಗಳು ಲಭ್ಯವಿಲ್ಲ.',
     noFaq: 'ನನ್ನ FlowDesk FAQ ನಲ್ಲಿ ಆ ಪ್ರಶ್ನೆಗೆ ಉತ್ತರವಿಲ್ಲ. ',
     booked: 'ನಿಮ್ಮ ಡೆಮೊ ಬುಕ್ ಆಗಿದೆ: ',
@@ -148,7 +154,7 @@ function captureProfile(session, text) {
   const when = input.match(/\b(\d{1,4})\s*(days?|weeks?|months?)\b|(?:^|\s)(\d{1,4})\s*(दिन|हफ्ते|सप्ताह|महीने|ದಿನ|ದಿನಗಳು|ವಾರ|ವಾರಗಳು|ತಿಂಗಳು)/i);
   const onlyNumber = /^\d{1,4}[.!।]?$/.test(input.trim()) ? parseInt(input, 10) : null;
   const relative = relativeTimeline(input);
-  const useCase = has(input, /^(?:(?:our (?:goal|use case) is|we (?:need|want|would like|plan|hope) to|i (?:need|want|would like) to|(?:we|i) need (?:an? agent to|help with)|answer|handle|qualify|route|automate|book|capture|respond to)\s+\S|(?:हमें|हमारी ज़रूरत|मैं चाहता|ನಮಗೆ|ನಮ್ಮ ಅಗತ್ಯ)\s+\S)/i);
+  const useCase = has(input, /^(?:(?:our (?:goal|use case) is|we (?:need|want|would like|plan|hope) to|i (?:need|want|would like) to|(?:we|i) need (?:an? agent to|help with)|answer|handle|qualify|route|automate|book|capture|respond to|for)\s+\S|(?:हमें|हमारी ज़रूरत|मैं चाहता|ನಮಗೆ|ನಮ್ಮ ಅಗತ್ಯ)\s+\S)/i);
   if (!session.profile.need && useCase && relative == null) session.profile.need = text.slice(0, 240);
   if (size) session.profile.teamSize = Number(size[1] || size[2] || size[3]) || null;
   else if (session.profile.need && !session.profile.teamSize && onlyNumber) session.profile.teamSize = onlyNumber;
@@ -194,6 +200,27 @@ function slotLabel(slot, language) {
   return new Intl.DateTimeFormat(say(language).locale, {
     timeZone: slot.timeZone, dateStyle: 'full', timeStyle: 'short',
   }).format(new Date(slot.startsAt)) + ' IST (Asia/Kolkata)';
+}
+
+function bookingSelection(text, offers, language) {
+  const phrase = tokens(digits(text)).join(' ');
+  const number = phrase.match(/^(?:(?:slot|option|number|स्लॉट|ಸ್ಲಾಟ್) )?([1-6])$/);
+  const ordinal = phrase.match(/^(?:the )?(first|second|third|fourth|fifth|sixth)(?: (?:one|slot|option))?$/i);
+  if (number || ordinal) {
+    const index = number ? Number(number[1]) - 1 : ['first', 'second', 'third', 'fourth', 'fifth', 'sixth'].indexOf(ordinal[1]);
+    return offers[index] ? [offers[index]] : [];
+  }
+  const dateWords = phrase.match(/\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|सोमवार|मंगलवार|बुधवार|गुरुवार|शुक्रवार|शनिवार|रविवार|ಸೋಮವಾರ|ಮಂಗಳವಾರ|ಬುಧವಾರ|ಗುರುವಾರ|ಶುಕ್ರವಾರ|ಶನಿವಾರ|ಭಾನುವಾರ/u);
+  if (!dateWords || (dateWords.index > 0 && !/^(?:on|for|this|next|i(?: would like| prefer| choose| ll take)|please|book|schedule|create|okay|so|can we|can i)\b/.test(phrase))) return null;
+  if (/\b(?:start|launch|deploy|roll out|can t|cannot|not|don t)\b/.test(phrase)) return null;
+  return offers.filter(slot => ['en-IN', say(language).locale].some(locale => {
+    const weekday = new Intl.DateTimeFormat(locale, { timeZone: slot.timeZone, weekday: 'long' }).format(new Date(slot.startsAt));
+    return tokens(weekday).join(' ') === dateWords[0];
+  }));
+}
+
+function offerList(offers) {
+  return offers.map((slot, index) => (index + 1) + '. ' + slot.label).join('. ');
 }
 
 function problem(message, status = 400, code = 'invalid') {
@@ -290,11 +317,12 @@ function createSales({ crm, chat, now = Date.now, store = memoryStore(), observe
     const heardAlias = /\b(?:flutus|flow desk|flow disk|flow disc)\b/i.test(text);
     const inquiry = text.replace(/\b(?:flutus|flow desk|flow disk|flow disc)\b/gi, 'FlowDesk');
     const question = has(text, /[?？]|(?:^|[.!।;,]\s*)(?:(?:and|also|just|please|so|then)\s+)*(?:can|could|would|does|do|what|how|when|where|why|who|is|are|tell me|explain|describe|compare|walk me through|i want to know|i am curious)\b|क्या|कितना|कैसे|बताइए|बताओ|ಏನು|ಎಷ್ಟು|ಹೇಗೆ|ಯಾವ|ಹೇಳಿ|\b(?:kya|kaise|batao)\b/i);
-    const wantsSlots = has(text, /\b(?:book (?:me )?(?:a |the )?(?:demo|appointment)|schedule (?:a |the )?(?:demo|appointment)|(?:show|see|list|have|what are) (?:me )?(?:the )?(?:available |demo )?(?:demo )?(?:slots|times)|(?:demo|appointment) availability)\b|(?:डेमो|अपॉइंटमेंट|स्लॉट).*(?:दिखा|बुक कर|उपलब्ध समय)|(?:ಡೆಮೊ|ಸಮಯ|ಸ್ಲಾಟ್).*(?:ತೋರಿಸಿ|ಬುಕ್ ಮಾಡಿ|ಲಭ್ಯವಿರುವ ಸಮಯ)/i) &&
-      !has(text, /\b(?:does|can) (?:it|the agent|the voice agent|flowdesk)\b/i);
-    const match = digits(text).match(/^(?:slot|स्लॉट|ಸ್ಲಾಟ್)\s*([1-6])[.!।]?$/i);
+    const bookingText = text.replace(/\bappoitments?\b/gi, 'appointment');
+    const wantsSlots = has(bookingText, /\b(?:(?:book|schedule|create|set up) (?:me )?(?:an? |the |my )?(?:demo|appointment)|(?:show|see|list|have|what are) (?:me )?(?:the )?(?:available |demo )?(?:demo )?(?:slots|times)|(?:demo|appointment) availability)\b|(?:डेमो|अपॉइंटमेंट|स्लॉट).*(?:दिखा|बुक कर|उपलब्ध समय)|(?:ಡೆಮೊ|ಸಮಯ|ಸ್ಲಾಟ್).*(?:ತೋರಿಸಿ|ಬುಕ್ ಮಾಡಿ|ಲಭ್ಯವಿರುವ ಸಮಯ)/i) &&
+      !has(bookingText, /\b(?:does|can) (?:it|the agent|the voice agent|flowdesk)\b/i);
+    const matches = session.offers.length && (!question || wantsSlots) ? bookingSelection(bookingText, session.offers, session.language) : null;
     const ranked = rankPassages(inquiry);
-    const name = introduction ? (introduction.remainder ? null : introduction.name) : readProspectName(text, session.awaitingName && !question && !wantsSlots && !ranked.length && relativeTimeline(text) == null);
+    const name = introduction ? (introduction.remainder ? null : introduction.name) : readProspectName(text, session.awaitingName && !question && !wantsSlots && !matches && !ranked.length && !/^for\s/i.test(text) && relativeTimeline(text) == null);
     session.awaitingName = false;
     if (name) {
       session.profile.name = name;
@@ -324,21 +352,29 @@ function createSales({ crm, chat, now = Date.now, store = memoryStore(), observe
       return;
     }
 
-    if (match && session.offers[Number(match[1]) - 1]) {
-      const offer = session.offers[Number(match[1]) - 1];
+    if (matches) {
       session.turns.push({ role: 'user', text: original });
-      session.proposed = offer;
-      reply(session, p.confirmTime + offer.label + '. ' + p.confirmHelp);
+      if (matches.length === 1) {
+        session.proposed = matches[0];
+        reply(session, p.confirmTime + session.proposed.label + '. ' + p.confirmHelp);
+      } else {
+        session.proposed = null;
+        reply(session, (matches.length ? p.slotAmbiguous : p.slotNotFound) + offerList(session.offers));
+      }
       return;
     }
     if (wantsSlots) {
+      const asksForOptions = /(?:other|different|available|availability|slots|times)/i.test(bookingText);
+      if (session.proposed && !asksForOptions) {
+        session.turns.push({ role: 'user', text: original });
+        reply(session, p.confirmTime + session.proposed.label + '. ' + p.confirmHelp);
+        return;
+      }
       const slots = await crm.slots(session.tenantId);
       session.turns.push({ role: 'user', text: original });
       session.proposed = null;
       session.offers = slots.map(slot => ({ ...slot, label: slotLabel(slot, session.language) }));
-      reply(session, session.offers.length
-        ? p.chooseTimes + session.offers.map((slot, i) => (i + 1) + '. ' + slot.label).join('. ')
-        : p.noTimes);
+      reply(session, session.offers.length ? p.chooseTimes + offerList(session.offers) : p.noTimes);
       return;
     }
     session.turns.push({ role: 'user', text: original });
@@ -359,7 +395,7 @@ function createSales({ crm, chat, now = Date.now, store = memoryStore(), observe
       reply(session, 'If you mean FlowDesk, ' + faq.find(entry => entry.id === 'FAQ-02').en, ranked);
       return;
     }
-    if (question || cautious || (relativeTimeline(text) == null && ranked.length && !has(text, /^(?:(?:we|my|our|i need|i have)\b|(?:हमें|हमारी|हमारे|मेरी|मेरे|हम|ನಮಗೆ|ನಮ್ಮ|ನನಗೆ)\s)/i))) {
+    if (question || cautious || (relativeTimeline(text) == null && ranked.length && !has(text, /^(?:(?:we|my|our|for|i need|i have)\b|(?:हमें|हमारी|हमारे|मेरी|मेरे|हम|ನಮಗೆ|ನಮ್ಮ|ನನಗೆ)\s)/i))) {
       await answerInquiry(session, inquiry, ranked);
       return;
     }
@@ -375,7 +411,10 @@ function createSales({ crm, chat, now = Date.now, store = memoryStore(), observe
     const memory = before === 'Needs review' && result.outcome !== 'Needs review' ? memoryText : '';
     const capturedTimeline = session.profile.timelineDays != null && session.profile.timelineDays !== priorTimeline;
     const acknowledgment = !memory && capturedTimeline ? p.timelineSaved(session.profile.timelineDays) + ' ' : '';
-    reply(session, acknowledgment + memory + nextQuestion(session));
+    const next = session.proposed
+      ? p.confirmTime + session.proposed.label + '. ' + p.confirmHelp
+      : session.offers.length ? p.chooseTimes + offerList(session.offers) : nextQuestion(session);
+    reply(session, acknowledgment + memory + next);
   }
 
   async function finalize(session, slotId, confirmationText) {

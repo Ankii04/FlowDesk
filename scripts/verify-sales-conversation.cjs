@@ -7,11 +7,11 @@ let modelInput;
 let effectCount = 0;
 const slot = { id: 'demo-slot', startsAt: '2030-04-09T05:00:00Z', timeZone: 'Asia/Kolkata' };
 
-function fixture(chat) {
+function fixture(chat, slots = [slot]) {
   const sales = createSales({
     chat,
     crm: {
-      slots: async () => [slot],
+      slots: async () => slots,
       finalize: async data => { effectCount += 1; return data; },
     },
   });
@@ -75,6 +75,34 @@ async function main() {
   assert.match(confirmed.turns.at(-1).text, /Your demo is booked/);
   await liveFixture.ask(voiceBooking.id, 'Confirm booking');
   assert.equal(effectCount, 2);
+
+  const saturday = { id: 'sat', startsAt: '2026-11-28T05:00:00Z', timeZone: 'Asia/Kolkata' };
+  const sunday = { id: 'sun', startsAt: '2026-11-29T06:00:00Z', timeZone: 'Asia/Kolkata' };
+  const monday = { id: 'mon', startsAt: '2026-11-30T07:00:00Z', timeZone: 'Asia/Kolkata' };
+  const salesBooking = fixture(async () => { throw Error('booking should work without Groq'); }, [saturday, sunday, monday]);
+  const prospect = await salesBooking.start('en');
+  assert.equal((await salesBooking.ask(prospect.id, 'create an appointment')).offers.length, 3);
+  const selected = await salesBooking.ask(prospect.id, 'sunday');
+  assert.equal(selected.proposed.id, sunday.id);
+  assert.match(selected.turns.at(-1).text, /Sunday.*Confirm booking/i);
+  assert.equal(selected.saved, null);
+  for (const text of ['For ai website', 'For my ai company', 'for using ai voice agent in my sales team', 'okay so book my appoitment as i have say you']) {
+    const response = await salesBooking.ask(prospect.id, text);
+    assert.equal(response.proposed.id, sunday.id);
+    assert.match(response.turns.at(-1).text, /Confirm booking/);
+    assert.doesNotMatch(response.turns.at(-1).text, /What would you use/);
+  }
+  assert.equal((await salesBooking.ask(prospect.id, 'Confirm booking')).saved.slotId, sunday.id);
+
+  const duplicateSunday = { ...sunday, id: 'sun-late', startsAt: '2026-11-29T08:00:00Z' };
+  const ambiguous = fixture(async () => { throw Error('fixture outage'); }, [sunday, duplicateSunday]);
+  const chooser = await ambiguous.start('en');
+  await ambiguous.ask(chooser.id, 'okay so book a appointment');
+  const unclear = await ambiguous.ask(chooser.id, 'Sunday');
+  assert.equal(unclear.proposed, null);
+  assert.match(unclear.turns.at(-1).text, /more than one match/);
+  assert.match((await ambiguous.ask(chooser.id, 'Tuesday')).turns.at(-1).text, /current list/);
+  assert.equal((await ambiguous.ask(chooser.id, 'second one')).proposed.id, duplicateSunday.id);
 
   const recoverable = await liveFixture.start('en');
   const requestId = 'test-request-id-001';
@@ -170,6 +198,6 @@ async function main() {
   const kannadaOverview = await offline.ask(kannada.id, 'FlowDesk ಏನು ಮಾಡುತ್ತದೆ?');
   assert.equal(kannadaOverview.turns.at(-1).source.id, 'FAQ-02');
   assert.match(kannadaOverview.turns.at(-1).text, /ರಿಸೆಪ್ಷನಿಸ್ಟ್/);
-  console.log('PASS: introduction, natural question without punctuation, multiple topics, follow-up context, sales scope, session names and skipping, Hindi and Kannada, outage, relative timelines, purchase and benefits, and explicit booking.');
+  console.log('PASS: introduction, natural question without punctuation, multiple topics, follow-up context, sales scope, session names and skipping, Hindi and Kannada, outage, relative timelines, purchase and benefits, weekday selection and explicit booking.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
